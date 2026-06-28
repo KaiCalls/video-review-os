@@ -1,0 +1,43 @@
+# Example Video Review OS config.
+
+[paths]
+watch_dir = "./raw"
+projects_dir = "./projects"
+dashboard_dir = "./dashboard"
+
+[media]
+ffmpeg_path = "ffmpeg"
+ffprobe_path = "ffprobe"
+copy_source_to_project = false
+
+[transcription]
+provider = "fallback"
+model = "base"
+language = ""
+device = "cpu"
+compute_type = "int8"
+hosted_endpoint_env = "VIDEO_REVIEW_TRANSCRIBE_ENDPOINT"
+hosted_api_key_env = "VIDEO_REVIEW_TRANSCRIBE_API_KEY"
+
+[quality_gate]
+keep_threshold = 80
+trim_threshold = 65
+review_threshold = 45
+min_clip_seconds = 12.0
+ideal_min_seconds = 18.0
+max_clip_seconds = 90.0
+awkward_pause_seconds = 2.2
+opening_word_window = 8
+
+[copy]
+provider = "fallback"
+hosted_endpoint_env = "VIDEO_REVIEW_COPY_ENDPOINT"
+hosted_api_key_env = "VIDEO_REVIEW_COPY_API_KEY"
+
+[render]
+video_codec = "libx264"
+audio_codec = "aac"
+preset = "veryfast"
+crf = 23
+default_decisions = ["keep"]
+

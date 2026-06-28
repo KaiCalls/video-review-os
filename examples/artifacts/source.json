@@ -1,0 +1,36 @@
+{
+  "schema_version": "video_review_os.source.v1",
+  "created_at": "2026-01-01T00:00:00Z",
+  "project_id": "sample-video-abc123",
+  "source": {
+    "original_path": "/videos/raw/sample-video.mp4",
+    "project_path": null,
+    "active_path": "/videos/raw/sample-video.mp4",
+    "filename": "sample-video.mp4",
+    "sha256": "abc123",
+    "size_bytes": 123456,
+    "mtime": 1767225600
+  },
+  "media": {
+    "ok": true,
+    "duration_seconds": 320.4,
+    "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+    "video": {
+      "codec": "h264",
+      "width": 1920,
+      "height": 1080,
+      "r_frame_rate": "30000/1001"
+    },
+    "audio": {
+      "codec": "aac",
+      "sample_rate": 48000,
+      "channels": 2
+    }
+  },
+  "safety": {
+    "source_deleted": false,
+    "source_moved": false,
+    "auto_publish_enabled": false
+  }
+}
+
