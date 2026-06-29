@@ -165,7 +165,23 @@ For each visible candidate, it can create:
 - `visuals/thumbnails/<clip_id>.svg`
 - `visuals/scene-cards/<clip_id>.svg`
 
-The visual drafts use extracted frames as the background or scene stack. If `mascot_image_path` or `logo_image_path` is set in config, those local assets are embedded into the generated SVGs. The repository ships with no private brand assets.
+The visual drafts use extracted frames as the background or scene stack. If `mascot_image_path` or `logo_image_path` is set in config, those local assets are embedded into the generated SVGs.
+
+### KaiCalls Mascot Overlay Example
+
+This repo is published under KaiCalls, so it includes a branded example showing the actual mascot overlay path.
+
+![KaiCalls mascot overlay thumbnail example](examples/kai-mascot-overlay-demo/project/visuals/thumbnails/clip-001.svg)
+
+Included example files:
+
+- `examples/assets/kai-mascot-hero.png`
+- `examples/assets/sample-frame.svg`
+- `examples/kai-mascot-overlay-demo/config.toml`
+- `examples/kai-mascot-overlay-demo/project/visuals/thumbnails/clip-001.svg`
+- `examples/kai-mascot-overlay-demo/project/visuals/scene-cards/clip-001.svg`
+
+The core pipeline is still config-driven. Replace `mascot_image_path` with your own transparent PNG if you are not using the KaiCalls branded demo.
 
 ## Approval Safety
 
@@ -346,6 +362,16 @@ crf = 23
 default_decisions = ["keep"]
 ```
 
+KaiCalls branded demo config:
+
+```toml
+[visuals]
+brand_accent = "#5C8CFF"
+background = "#12121A"
+mascot_image_path = "../assets/kai-mascot-hero.png"
+include_decisions = ["keep", "trim", "review"]
+```
+
 ## Project Structure
 
 ```text
@@ -438,7 +464,8 @@ Manual smoke test:
 - Do not put API keys in `config.toml`; use environment variables.
 - Treat generated transcripts as sensitive.
 - Treat project folders as sensitive because JSON sidecars can contain local file paths and transcript text.
-- Mascot and logo assets are local paths in config. Do not commit private assets.
+- Mascot and logo assets are local paths in config.
+- This repository includes a KaiCalls mascot example so the frame-overlay workflow is visible. Replace it for your own brand.
 - Review generated copy and visual drafts before using them externally.
 - Source videos are never deleted by this tool.
 
@@ -448,7 +475,7 @@ Manual smoke test:
 - No hidden uploads.
 - No automatic social account connection.
 - No automatic movement into platform handoff folders.
-- No bundled private brand assets, mascots, or deployment assumptions.
+- No private deployment assumptions.
 - No claim that a `keep` clip is approved for publication.
 - No attempt to replace human editorial review.
 - No destructive source video cleanup.

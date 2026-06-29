@@ -1,0 +1,21 @@
+{
+  "schema_version": "video_review_os.clips.v1",
+  "project_id": "kai-mascot-overlay-demo",
+  "source_sha256": "demo-source-sha256",
+  "candidates": [
+    {
+      "clip_id": "clip-001",
+      "decision": "keep",
+      "source_sha256": "demo-source-sha256",
+      "start": 12.0,
+      "end": 42.0,
+      "text": "A local-first review pipeline should show the clip, the frame, the caption, and the human approval state before anything posts.",
+      "text_sha256": "demo-text-sha256",
+      "quality_gate": {
+        "score": 91,
+        "decision": "keep",
+        "flags": []
+      }
+    }
+  ]
+}

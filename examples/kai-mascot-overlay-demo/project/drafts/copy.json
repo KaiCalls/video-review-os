@@ -1,0 +1,16 @@
+{
+  "schema_version": "video_review_os.copy_drafts.v1",
+  "project_id": "kai-mascot-overlay-demo",
+  "source_sha256": "demo-source-sha256",
+  "drafts": [
+    {
+      "clip_id": "clip-001",
+      "decision": "keep",
+      "provider": "example",
+      "status": "ok",
+      "title": "Review clips before anything posts",
+      "hook": "Cut the clip, show the frame, add the mascot, then make a person approve it.",
+      "caption": "A local-first video review pipeline with captions, frame overlays, visual drafts, and approval gates."
+    }
+  ]
+}

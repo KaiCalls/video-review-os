@@ -1,0 +1,16 @@
+[paths]
+watch_dir = "../raw"
+projects_dir = "."
+dashboard_dir = "../dashboard"
+
+[visuals]
+thumbnail_width = 1280
+thumbnail_height = 720
+scene_card_width = 1080
+scene_card_height = 1920
+brand_accent = "#5C8CFF"
+background = "#12121A"
+text_color = "#ffffff"
+mascot_image_path = "../assets/kai-mascot-hero.png"
+logo_image_path = ""
+include_decisions = ["keep", "trim", "review"]

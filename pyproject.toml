@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "video-review-os"
-version = "0.2.0"
+version = "0.2.1"
 description = "Local-first video clipping pipeline with captions, scene frames, visual drafts, renders, post queues, and human approval."
 readme = "README.md"
 requires-python = ">=3.11"

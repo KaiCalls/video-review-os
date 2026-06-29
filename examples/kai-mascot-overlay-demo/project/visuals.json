@@ -1,0 +1,32 @@
+{
+  "created_at": "2026-06-29T12:36:14Z",
+  "include_decisions": [
+    "keep",
+    "trim",
+    "review"
+  ],
+  "outputs": {
+    "scene_cards_dir": "examples\\kai-mascot-overlay-demo\\project\\visuals\\scene-cards",
+    "thumbnails_dir": "examples\\kai-mascot-overlay-demo\\project\\visuals\\thumbnails"
+  },
+  "project_id": "kai-mascot-overlay-demo",
+  "schema_version": "video_review_os.visuals.v1",
+  "source_sha256": "demo-source-sha256",
+  "visuals": [
+    {
+      "clip_id": "clip-001",
+      "decision": "keep",
+      "frame_count": 1,
+      "hook": "Cut the clip, show the frame, add the mascot, then make a person approve it.",
+      "input_frames": [
+        "examples\\assets\\sample-frame.svg"
+      ],
+      "scene_card_svg": "examples\\kai-mascot-overlay-demo\\project\\visuals\\scene-cards\\clip-001.svg",
+      "status": "written",
+      "thumbnail_svg": "examples\\kai-mascot-overlay-demo\\project\\visuals\\thumbnails\\clip-001.svg",
+      "title": "Review clips before anything posts",
+      "uses_logo": false,
+      "uses_mascot": true
+    }
+  ]
+}

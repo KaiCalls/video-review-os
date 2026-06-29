@@ -157,12 +157,12 @@ def _thumbnail_svg(
         else _placeholder_frame(width, height, config.visuals.background)
     )
     mascot = (
-        f'<image href="{_xml(mascot_uri)}" x="{width - 310}" y="{height - 330}" width="240" height="260" preserveAspectRatio="xMidYMid meet" />'
+        f'  <image href="{_xml(mascot_uri)}" x="{width - 310}" y="{height - 330}" width="240" height="260" preserveAspectRatio="xMidYMid meet" />'
         if mascot_uri
         else ""
     )
     logo = (
-        f'<image href="{_xml(logo_uri)}" x="{width - 180}" y="52" width="110" height="70" preserveAspectRatio="xMidYMid meet" />'
+        f'  <image href="{_xml(logo_uri)}" x="{width - 180}" y="52" width="110" height="70" preserveAspectRatio="xMidYMid meet" />'
         if logo_uri
         else ""
     )
@@ -173,10 +173,10 @@ def _thumbnail_svg(
   <rect width="{width}" height="{height}" fill="#000000" opacity="0.48" />
   <rect x="56" y="48" width="176" height="48" rx="24" fill="{_xml(config.visuals.brand_accent)}" />
   <text x="88" y="79" font-family="Arial, sans-serif" font-size="22" font-weight="700" fill="#ffffff">{_xml(decision.upper())}</text>
-  {logo}
+{logo}
   {title_svg}
   {hook_svg}
-  {mascot}
+{mascot}
 </svg>
 """
 
@@ -211,12 +211,12 @@ def _scene_card_svg(
     title_svg = _svg_lines(_text_lines(copy["title"], 24, 3), 72, text_y, 58, 58, config.visuals.text_color, 800)
     hook_svg = _svg_lines(_text_lines(copy["hook"], 36, 3), 72, text_y + 210, 32, 38, "#d1d5db", 600)
     mascot = (
-        f'<image href="{_xml(mascot_uri)}" x="{width - 300}" y="{height - 330}" width="220" height="260" preserveAspectRatio="xMidYMid meet" />'
+        f'  <image href="{_xml(mascot_uri)}" x="{width - 300}" y="{height - 330}" width="220" height="260" preserveAspectRatio="xMidYMid meet" />'
         if mascot_uri
         else ""
     )
     logo = (
-        f'<image href="{_xml(logo_uri)}" x="{width - 190}" y="{height - 132}" width="110" height="70" preserveAspectRatio="xMidYMid meet" />'
+        f'  <image href="{_xml(logo_uri)}" x="{width - 190}" y="{height - 132}" width="110" height="70" preserveAspectRatio="xMidYMid meet" />'
         if logo_uri
         else ""
     )
@@ -229,8 +229,8 @@ def _scene_card_svg(
   <rect x="0" y="{text_y - 34}" width="{width}" height="{height - text_y + 34}" fill="#000000" opacity="0.24" />
   {title_svg}
   {hook_svg}
-  {mascot}
-  {logo}
+{mascot}
+{logo}
 </svg>
 """
 

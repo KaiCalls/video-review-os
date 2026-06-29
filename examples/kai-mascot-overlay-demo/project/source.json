@@ -1,0 +1,9 @@
+{
+  "schema_version": "video_review_os.source.v1",
+  "project_id": "kai-mascot-overlay-demo",
+  "source": {
+    "active_path": "examples/raw/demo-video.mp4",
+    "filename": "demo-video.mp4",
+    "sha256": "demo-source-sha256"
+  }
+}

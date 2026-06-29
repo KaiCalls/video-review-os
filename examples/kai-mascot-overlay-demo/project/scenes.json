@@ -1,0 +1,21 @@
+{
+  "schema_version": "video_review_os.scenes.v1",
+  "project_id": "kai-mascot-overlay-demo",
+  "source_sha256": "demo-source-sha256",
+  "scenes": [
+    {
+      "clip_id": "clip-001",
+      "decision": "keep",
+      "status": "processed",
+      "frames": [
+        {
+          "index": 1,
+          "timestamp": 12.25,
+          "path": "examples/assets/sample-frame.svg",
+          "status": "written",
+          "error": null
+        }
+      ]
+    }
+  ]
+}
