@@ -1,43 +1,126 @@
 # Video Review OS
 
-Video Review OS is a local-first pipeline that turns raw videos into reviewable posting drafts. It watches or scans a folder, creates inspectable project folders, transcribes video when a provider is configured, scores candidate clips, drafts titles/hooks/captions, optionally renders MP4 drafts, and stops at human approval.
+Turn raw video folders into reviewable clip drafts without giving automation permission to publish.
 
-Default mode is review-only. It does not publish, upload, or move files into platform handoff folders.
+Video Review OS is a local-first Python pipeline for creators, agencies, and small teams that record more video than they can review. Drop raw files into a folder and get organized source projects, transcripts, clip candidates, quality reports, captions, titles, optional MP4 drafts, and a simple review dashboard.
 
-## Repository Name Options
+The default workflow stops at review. It does not upload. It does not post. It does not move files into platform handoff folders. A person stays in the approval path.
 
-The recommended repository name is `video-review-os`.
+## What It Does
 
-Other reasonable names:
+Video Review OS takes a raw video and produces:
 
-- `raw-video-review-os`
-- `creator-review-pipeline`
-- `local-video-draft-os`
-- `clip-review-gate`
+- A source project folder with inspectable JSON sidecars.
+- Media metadata from `ffprobe`.
+- Transcript and word-timestamp artifacts when a provider is configured.
+- Candidate short clips and long-form segment ranges.
+- Audience-first quality gate reports.
+- Hook, title, and caption drafts.
+- Optional rendered MP4 drafts.
+- Static dashboard JSON and HTML for mobile review.
+- Local approval state tied to the exact source clip and time range.
 
-## README Outline
+## Why It Exists
 
-- What the tool does
-- Install and prerequisites
-- Quick start
-- Architecture
-- Configuration
-- Artifact schemas
-- CLI commands
-- Quality gate model
-- Approval workflow
-- MVP checklist
-- Testing checklist
-- Security and privacy notes
-- Non-goals
+Most short-form pipelines are optimized for speed. That creates a predictable failure mode: bad clips get pushed forward because they contain a decent sentence somewhere in the transcript.
+
+Video Review OS is built around a different rule:
+
+The clip has to work for a viewer who did not see the original recording.
+
+That means the pipeline checks more than topic relevance. It looks for missing setup, mid-thought starts, filler-heavy openings, awkward pauses, outtake markers, weak endings, and short ranges that do not stand alone.
+
+## Core Features
+
+### Local-First Ingest
+
+- Watches or scans a configurable raw video folder.
+- Creates deterministic project folders.
+- Stores source hash, filename, file size, media duration, streams, codecs, and safety metadata.
+- Never deletes source videos.
+
+### Pluggable Transcription
+
+- Works with deterministic fallback when no provider is configured.
+- Supports local `openai-whisper`.
+- Supports `faster-whisper` for CPU-friendly local transcription.
+- Includes a generic hosted HTTP adapter for teams that want a cheap external provider.
+- Keeps provider output as JSON sidecars instead of hiding it in a database.
+
+### Quality Gates Built For Viewers
+
+The scorer flags clips that may look fine in a transcript but fail in the feed:
+
+- Starts mid-thought.
+- Missing context.
+- Filler-heavy openings.
+- Stammers and restarts.
+- Slate or outtake markers such as `cut five`.
+- Repeated placeholder or nonsense words.
+- Incomplete video ranges.
+- Awkward silence or long pauses.
+- Too-short standalone clips.
+- Weak ending words.
+- Generic hooks and low-value captions.
+
+### Clip Decisions
+
+Each candidate receives one of four decisions:
+
+- `keep`: strong enough to render by default.
+- `trim`: promising, but needs edit work.
+- `review`: visible in the dashboard, not rendered by default.
+- `reject`: never rendered.
+
+Only `keep` clips become rendered post drafts by default. `trim` and `review` remain visible. `reject` clips never render.
+
+### Draft Copy
+
+Video Review OS creates reviewable:
+
+- Titles.
+- Hooks.
+- Captions.
+- Notes.
+- Copy quality flags.
+
+If an LLM or hosted copy provider is not configured, the pipeline still produces deterministic fallback copy so the workflow does not break.
+
+### FFmpeg Rendering
+
+- Uses `ffmpeg` for clip rendering.
+- Writes temporary files first, then renames.
+- Defaults to `keep` only.
+- Allows explicit rendering of `trim` or `review` clips when requested.
+- Does not render `reject` clips.
+
+### Static Review Dashboard
+
+The dashboard is just files:
+
+- `dashboard.json`
+- `index.html`
+
+It can be opened locally on desktop or mobile. It shows candidates, scores, decisions, flags, transcript snippets, draft copy, and approval status.
+
+### Approval State That Cannot Drift Silently
+
+Approval is tied to a stable signature:
+
+- Source video hash.
+- Start time.
+- End time.
+- Transcript text hash.
+
+If a draft is regenerated with a different source, range, or transcript, the old approval does not carry forward.
 
 ## Install
 
 Prerequisites:
 
 - Python 3.11+
-- `ffmpeg` and `ffprobe` on `PATH`
-- Optional: `openai-whisper` or `faster-whisper` for local CPU transcription
+- `ffmpeg`
+- `ffprobe`
 
 ```bash
 git clone https://github.com/YOUR-ORG/video-review-os.git
@@ -53,7 +136,7 @@ For local Whisper:
 python -m pip install -e ".[whisper]"
 ```
 
-or:
+For faster-whisper:
 
 ```bash
 python -m pip install -e ".[faster-whisper]"
@@ -69,33 +152,38 @@ video-review-os --config config.toml run-once
 video-review-os --config config.toml dashboard
 ```
 
-Open `dashboard/index.html` in a browser.
+Open:
 
-Rendering is explicit:
+```text
+dashboard/index.html
+```
+
+Render approved-by-policy drafts:
 
 ```bash
 video-review-os --config config.toml run-once --render
 ```
 
-By default, only `keep` clips render. `trim` and `review` stay visible as candidates. `reject` clips never render.
+By default, this renders only `keep` clips.
 
-## Architecture Overview
+## CLI Commands
 
-The project is intentionally simple:
+```bash
+video-review-os init-config --path config.toml
+video-review-os --config config.toml scan
+video-review-os --config config.toml ingest raw/video.mp4
+video-review-os --config config.toml transcribe projects/sample-video-abc123
+video-review-os --config config.toml select-clips projects/sample-video-abc123
+video-review-os --config config.toml draft-copy projects/sample-video-abc123
+video-review-os --config config.toml render projects/sample-video-abc123
+video-review-os --config config.toml render projects/sample-video-abc123 --include trim
+video-review-os --config config.toml dashboard
+video-review-os --config config.toml approve projects/sample-video-abc123 clip-001 --reviewer "local-reviewer"
+video-review-os --config config.toml run-once
+video-review-os --config config.toml watch --interval 60
+```
 
-- `ingest.py`: discovers or ingests source videos, creates a project folder, runs `ffprobe`, and writes `source.json`.
-- `transcribe.py`: writes `transcript.json` through a pluggable provider. It supports deterministic fallback, local Whisper, faster-whisper, and a generic hosted HTTP adapter.
-- `quality_gate.py`: scores clips from viewer context, transcript words, timing, and copy quality signals.
-- `clip_select.py`: turns transcript words into candidate clip ranges and applies the quality gate.
-- `copy.py`: creates title, hook, and caption drafts with deterministic fallback and optional generic hosted copy generation.
-- `render.py`: renders MP4 drafts with `ffmpeg`. Default render policy is `keep` only.
-- `dashboard.py`: builds static `dashboard.json` and `index.html`.
-- `approval.py`: records approval against a stable clip signature.
-- `cli.py`: exposes the local commands.
-
-Artifacts are JSON sidecars in each project folder. Source videos are never deleted.
-
-## Config Schema
+## Configuration
 
 `config.toml`:
 
@@ -142,7 +230,24 @@ crf = 23
 default_decisions = ["keep"]
 ```
 
-## Artifact Schema Examples
+## Project Structure
+
+```text
+src/video_review_os/
+  ingest.py
+  transcribe.py
+  quality_gate.py
+  clip_select.py
+  render.py
+  copy.py
+  dashboard.py
+  approval.py
+  cli.py
+tests/
+examples/
+```
+
+## Artifact Examples
 
 `source.json`:
 
@@ -199,94 +304,7 @@ default_decisions = ["keep"]
 }
 ```
 
-`approvals.json`:
-
-```json
-{
-  "schema_version": "video_review_os.approvals.v1",
-  "approvals": [
-    {
-      "approval_key": "stable-hash",
-      "clip_id": "clip-001",
-      "status": "approved",
-      "reviewer": "local-reviewer",
-      "publish_allowed": false
-    }
-  ]
-}
-```
-
-## CLI Commands
-
-```bash
-video-review-os init-config --path config.toml
-video-review-os --config config.toml scan
-video-review-os --config config.toml ingest raw/video.mp4
-video-review-os --config config.toml transcribe projects/sample-video-abc123
-video-review-os --config config.toml select-clips projects/sample-video-abc123
-video-review-os --config config.toml draft-copy projects/sample-video-abc123
-video-review-os --config config.toml render projects/sample-video-abc123
-video-review-os --config config.toml render projects/sample-video-abc123 --include trim
-video-review-os --config config.toml dashboard
-video-review-os --config config.toml approve projects/sample-video-abc123 clip-001 --reviewer "local-reviewer"
-video-review-os --config config.toml run-once
-video-review-os --config config.toml watch --interval 60
-```
-
-## Quality Gate Scoring Model
-
-Each candidate starts at 100 points. The gate subtracts points for audience-visible problems:
-
-- Starts mid-thought or opens with missing context.
-- Filler-heavy openings such as repeated filler before the point is clear.
-- Stammers, restarts, repeated words, or repeated placeholder language.
-- Slate and outtake markers such as `cut five`.
-- End time beyond the inspected media duration.
-- Awkward silence based on word timestamp gaps.
-- Too-short standalone ranges.
-- Weak ending words that make the clip feel unfinished.
-- Generic or low-value hook/caption language.
-
-Decision thresholds:
-
-- `keep`: score >= 80 with no fatal flags.
-- `trim`: score >= 65.
-- `review`: score >= 45.
-- `reject`: score < 45 or fatal flags.
-
-Fatal flags include outtake markers, incomplete video segments, and ranges below the standalone minimum.
-
-## Approval Workflow
-
-Approval is local state, not publishing permission.
-
-1. The pipeline creates candidates.
-2. A reviewer checks the dashboard and rendered drafts.
-3. The reviewer approves a clip with the CLI.
-4. Approval is stored against a stable signature built from source hash, start time, end time, and transcript text hash.
-5. If the clip is regenerated with a different source, range, or transcript text, the old approval does not carry forward.
-
-There is no publishing command in this project.
-
-## MVP Implementation Checklist
-
-- [x] Python package and CLI.
-- [x] Configurable paths.
-- [x] Safe JSON writes through temp files and rename.
-- [x] Source video ingest without deleting source files.
-- [x] `ffprobe` media inspection.
-- [x] Local transcription adapter interfaces.
-- [x] Deterministic transcription fallback.
-- [x] Clip candidate generation.
-- [x] Audience-first quality gate.
-- [x] Copy draft generation with deterministic fallback.
-- [x] Render selection policy: `keep` only by default, never `reject`.
-- [x] `ffmpeg` rendering.
-- [x] Static dashboard JSON and HTML.
-- [x] Approval state tied to source and time range.
-- [x] Unit tests for quality gates and render selection.
-
-## Testing Checklist
+## Testing
 
 ```bash
 python -m pip install -e ".[dev]"
@@ -302,14 +320,14 @@ Manual smoke test:
 5. Run `video-review-os --config config.toml dashboard`.
 6. Confirm `dashboard/index.html` shows candidates and decisions.
 
-## Security and Privacy Notes
+## Security And Privacy
 
-- Keep raw videos local unless you explicitly configure a hosted transcription or copy adapter.
+- Raw videos stay local unless you configure a hosted adapter.
 - Do not put API keys in `config.toml`; use environment variables.
-- Review generated text before using it externally.
-- JSON sidecars may contain local file paths and transcript text. Treat project folders as sensitive by default.
-- Source videos are never deleted by the tool.
-- The dashboard is static and local. It does not require a server.
+- Treat generated transcripts as sensitive.
+- Treat project folders as sensitive because JSON sidecars can contain local file paths and transcript text.
+- Review generated copy before using it externally.
+- Source videos are never deleted by this tool.
 
 ## Non-Goals
 
@@ -321,3 +339,4 @@ Manual smoke test:
 - No attempt to replace human editorial review.
 - No destructive source video cleanup.
 - No private deployment assumptions.
+
