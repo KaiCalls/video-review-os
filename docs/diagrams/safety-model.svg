@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">Approval safety model</title>
+  <desc id="desc">Approval only carries forward when source hash, time range, and transcript hash match. Publishing remains disabled.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#334155" />
+    </marker>
+    <style>
+      .bg{fill:#f8fafc}.box{fill:#fff;stroke:#cbd5e1;stroke-width:2;rx:14}.check{fill:#eff6ff;stroke:#60a5fa;stroke-width:2;rx:14}.safe{fill:#ecfdf5;stroke:#34d399;stroke-width:2;rx:14}.stop{fill:#fef2f2;stroke:#f87171;stroke-width:2;rx:14}.title{font:700 26px Arial,sans-serif;fill:#0f172a}.text{font:600 17px Arial,sans-serif;fill:#0f172a}.small{font:14px Arial,sans-serif;fill:#475569}.line{stroke:#334155;stroke-width:2.2;fill:none;marker-end:url(#arrow)}.label{font:700 13px Arial,sans-serif;fill:#334155}
+    </style>
+  </defs>
+  <rect class="bg" width="1200" height="560" rx="24" />
+  <text x="48" y="56" class="title">Approval cannot drift silently</text>
+  <text x="48" y="84" class="small">A regenerated draft must match the same source clip before old approval is shown.</text>
+
+  <rect class="box" x="54" y="214" width="170" height="82" />
+  <text x="92" y="246" class="text">Clip draft</text>
+  <text x="76" y="272" class="small">Generated artifact</text>
+
+  <rect class="check" x="284" y="214" width="190" height="82" />
+  <text x="318" y="246" class="text">Source hash?</text>
+  <text x="314" y="272" class="small">Same source video</text>
+
+  <rect class="check" x="544" y="214" width="190" height="82" />
+  <text x="575" y="246" class="text">Time range?</text>
+  <text x="575" y="272" class="small">Same start/end</text>
+
+  <rect class="check" x="804" y="214" width="190" height="82" />
+  <text x="838" y="246" class="text">Text hash?</text>
+  <text x="830" y="272" class="small">Same transcript</text>
+
+  <rect class="safe" x="1030" y="146" width="140" height="82" />
+  <text x="1060" y="178" class="text">Approved</text>
+  <text x="1058" y="204" class="small">Show state</text>
+
+  <rect class="stop" x="1030" y="316" width="140" height="82" />
+  <text x="1062" y="348" class="text">No carry</text>
+  <text x="1058" y="374" class="small">Review again</text>
+
+  <rect class="stop" x="470" y="420" width="260" height="82" />
+  <text x="508" y="452" class="text">No auto-publish path</text>
+  <text x="512" y="478" class="small">Approval is not publishing</text>
+
+  <path class="line" d="M224 255 H284" />
+  <path class="line" d="M474 255 H544" />
+  <path class="line" d="M734 255 H804" />
+  <path class="line" d="M994 235 C1020 218 1024 198 1030 187" />
+  <path class="line" d="M379 296 C470 370 790 382 1030 356" />
+  <path class="line" d="M639 296 C720 348 860 368 1030 356" />
+  <path class="line" d="M899 296 C936 328 978 346 1030 356" />
+  <path class="line" d="M1100 398 C1060 468 818 474 730 461" />
+  <text x="502" y="244" class="label">yes</text>
+  <text x="762" y="244" class="label">yes</text>
+  <text x="1012" y="218" class="label">yes</text>
+  <text x="490" y="336" class="label">no at any check</text>
+</svg>
+

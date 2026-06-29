@@ -40,65 +40,129 @@ It is built for boring reliability, not autopilot posting.
 
 ## The Pipeline
 
+![Video Review OS pipeline](docs/diagrams/pipeline.svg)
+
+<details>
+<summary>Mermaid source</summary>
+
 ```mermaid
 flowchart LR
-    A[Raw video folder] --> B[Ingest]
-    B --> C[Source project folder]
-    C --> D[ffprobe media inspection]
-    C --> E[Transcription adapter]
-    E --> F[Transcript + word timestamps]
-    F --> G[Clip candidate selection]
+    A["Raw video folder"] --> B["Ingest"]
+    B --> C["Source project folder"]
+    C --> D["ffprobe media inspection"]
+    C --> E["Transcription adapter"]
+    E --> F["Transcript and word timestamps"]
+    F --> G["Clip candidate selection"]
     D --> G
-    G --> H[Audience quality gate]
-    H --> I[Copy drafts]
-    H --> J{Decision}
-    J -->|keep| K[Optional MP4 draft render]
-    J -->|trim| L[Visible candidate, no default render]
-    J -->|review| M[Visible candidate, no default render]
-    J -->|reject| N[Never render]
-    I --> O[Static review dashboard]
+    G --> H["Audience quality gate"]
+    H --> I["Copy drafts"]
+    H --> J{"Decision"}
+    J -->|keep| K["Optional MP4 draft render"]
+    J -->|trim| L["Visible candidate, no default render"]
+    J -->|review| M["Visible candidate, no default render"]
+    J -->|reject| N["Never render"]
+    I --> O["Static review dashboard"]
     K --> O
     L --> O
     M --> O
     N --> O
-    O --> P[Human approval]
+    O --> P["Human approval"]
 ```
+
+</details>
 
 ## The Safety Model
 
+![Video Review OS approval safety model](docs/diagrams/safety-model.svg)
+
+<details>
+<summary>Mermaid source</summary>
+
 ```mermaid
 flowchart TD
-    A[Generated clip draft] --> B{Does it match the source hash?}
-    B -->|No| X[Approval does not carry forward]
-    B -->|Yes| C{Does it match the same time range?}
+    A["Generated clip draft"] --> B{"Does it match the source hash?"}
+    B -->|No| X["Approval does not carry forward"]
+    B -->|Yes| C{"Does it match the same time range?"}
     C -->|No| X
-    C -->|Yes| D{Does it match the same transcript text?}
+    C -->|Yes| D{"Does it match the same transcript text?"}
     D -->|No| X
-    D -->|Yes| E[Previous local approval can be shown]
-    E --> F[Still no auto-publish command]
+    D -->|Yes| E["Previous local approval can be shown"]
+    E --> F["Still no auto-publish command"]
 ```
+
+</details>
 
 Approval is local review state. It is not a publishing permission slip.
 
 ## The Decision Gate
 
+![Video Review OS decision gate](docs/diagrams/decision-gate.svg)
+
+<details>
+<summary>Mermaid source</summary>
+
 ```mermaid
 flowchart TB
-    A[Candidate clip] --> B[Start at 100 points]
-    B --> C[Check viewer context]
-    C --> D[Check opening quality]
-    D --> E[Check transcript and timing]
-    E --> F[Check ending and copy quality]
-    F --> G{Fatal issue?}
-    G -->|Yes| R[reject]
-    G -->|No| H{Score}
-    H -->|80-100| K[keep]
-    H -->|65-79| T[trim]
-    H -->|45-64| V[review]
+    A["Candidate clip"] --> B["Start at 100 points"]
+    B --> C["Check viewer context"]
+    C --> D["Check opening quality"]
+    D --> E["Check transcript and timing"]
+    E --> F["Check ending and copy quality"]
+    F --> G{"Fatal issue?"}
+    G -->|Yes| R["reject"]
+    G -->|No| H{"Score"}
+    H -->|80-100| K["keep"]
+    H -->|65-79| T["trim"]
+    H -->|45-64| V["review"]
     H -->|0-44| R
 ```
 
+</details>
+
 The gate is audience-first. It looks for clips that may contain a decent sentence but still fail as standalone content.
+
+## How This Compares To Opus Clip And Other Clip Tools
+
+Video Review OS is not trying to replace hosted editors. It sits earlier in the workflow.
+
+Most AI clip tools optimize for speed, polish, and platform output. Video Review OS optimizes for local review, inspectable artifacts, and explicit human approval.
+
+| Tool | Best at | What Video Review OS does differently |
+| --- | --- | --- |
+| [Opus Clip](https://www.opus.pro/) | Turning long videos into many short clips and publishing or scheduling them from a hosted workflow. | Keeps the pipeline local-first, stores JSON sidecars, avoids connected social accounts, and defaults to no publishing. |
+| [Descript](https://www.descript.com/) | Full text-based video and podcast editing, recording, transcription, cleanup, and publishing. | Does not try to be a full editor. It triages raw footage and creates review artifacts before a clip enters an editor. |
+| [Riverside Magic Clips](https://riverside.com/magic-clips) | Recording plus AI-generated social clips, captions, presets, and ready-to-share outputs. | Works from ordinary local folders and focuses on auditability, quality flags, and approval state instead of recording-room workflow. |
+| [CapCut](https://www.capcut.com/tools/ai-video-editor) | Consumer/prosumer creative editing, templates, captions, effects, and AI-assisted video creation. | Does not focus on effects or templates. It decides whether a clip is understandable and safe to draft before creative styling. |
+| Manual editing | Maximum human judgment. | Reduces the first-pass review burden while keeping the final decision with a person. |
+
+### The Positioning
+
+Use Opus Clip, Descript, Riverside, or CapCut when you want a polished hosted editor.
+
+Use Video Review OS when you want:
+
+- Local files first.
+- No social account connection.
+- No automatic publishing.
+- Deterministic sidecar artifacts.
+- A visible review queue.
+- Quality gates that flag bad starts, missing context, outtakes, awkward pauses, and weak endings.
+- Approval state that resets when the source clip changes.
+
+## Who It Is For
+
+- Creators with folders full of raw footage.
+- Editors who need a first-pass review queue.
+- Agencies that want inspectable draft artifacts before client review.
+- Small teams that need a safe internal clipping pipeline.
+- Developers who want an open base for custom video review workflows.
+
+## Who It Is Not For
+
+- People who want one-click publishing.
+- People who want a full creative timeline editor.
+- People who want cloud-hosted account management.
+- People who want fully automated “viral” posting without review.
 
 ## What The Gate Flags
 
@@ -394,4 +458,3 @@ Manual smoke test:
 - No attempt to replace human editorial review.
 - No destructive source video cleanup.
 - No private deployment assumptions.
-

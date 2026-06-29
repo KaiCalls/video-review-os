@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600" role="img" aria-labelledby="title desc">
+  <title id="title">Clip decision gate</title>
+  <desc id="desc">Candidate clips are scored from the audience's point of view, then assigned keep, trim, review, or reject.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#334155" />
+    </marker>
+    <style>
+      .bg{fill:#f8fafc}.box{fill:#fff;stroke:#cbd5e1;stroke-width:2;rx:14}.score{fill:#eff6ff;stroke:#60a5fa;stroke-width:2;rx:14}.keep{fill:#ecfdf5;stroke:#34d399;stroke-width:2;rx:14}.trim{fill:#fff7ed;stroke:#fb923c;stroke-width:2;rx:14}.review{fill:#f5f3ff;stroke:#a78bfa;stroke-width:2;rx:14}.reject{fill:#fef2f2;stroke:#f87171;stroke-width:2;rx:14}.title{font:700 26px Arial,sans-serif;fill:#0f172a}.text{font:600 17px Arial,sans-serif;fill:#0f172a}.small{font:14px Arial,sans-serif;fill:#475569}.line{stroke:#334155;stroke-width:2.2;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect class="bg" width="1200" height="600" rx="24" />
+  <text x="48" y="56" class="title">Audience-first quality gate</text>
+  <text x="48" y="84" class="small">The gate asks whether a clip works for a viewer who never saw the original recording.</text>
+
+  <rect class="box" x="64" y="126" width="180" height="78" />
+  <text x="99" y="157" class="text">Candidate</text>
+  <text x="94" y="183" class="small">Clip time range</text>
+
+  <rect class="score" x="304" y="126" width="190" height="78" />
+  <text x="344" y="157" class="text">100 points</text>
+  <text x="330" y="183" class="small">Start with clean score</text>
+
+  <rect class="box" x="554" y="72" width="210" height="78" />
+  <text x="590" y="103" class="text">Context check</text>
+  <text x="583" y="129" class="small">Mid-thought, setup</text>
+
+  <rect class="box" x="554" y="174" width="210" height="78" />
+  <text x="593" y="205" class="text">Opening check</text>
+  <text x="592" y="231" class="small">Filler, restarts</text>
+
+  <rect class="box" x="554" y="276" width="210" height="78" />
+  <text x="591" y="307" class="text">Timing check</text>
+  <text x="594" y="333" class="small">Pauses, too short</text>
+
+  <rect class="box" x="554" y="378" width="210" height="78" />
+  <text x="596" y="409" class="text">Ending check</text>
+  <text x="589" y="435" class="small">Weak final words</text>
+
+  <rect class="reject" x="824" y="126" width="160" height="78" />
+  <text x="862" y="157" class="text">Fatal flag</text>
+  <text x="852" y="183" class="small">Reject immediately</text>
+
+  <rect class="keep" x="1030" y="72" width="130" height="70" />
+  <text x="1070" y="101" class="text">Keep</text>
+  <text x="1060" y="125" class="small">80-100</text>
+
+  <rect class="trim" x="1030" y="166" width="130" height="70" />
+  <text x="1072" y="195" class="text">Trim</text>
+  <text x="1064" y="219" class="small">65-79</text>
+
+  <rect class="review" x="1030" y="260" width="130" height="70" />
+  <text x="1060" y="289" class="text">Review</text>
+  <text x="1064" y="313" class="small">45-64</text>
+
+  <rect class="reject" x="1030" y="354" width="130" height="70" />
+  <text x="1060" y="383" class="text">Reject</text>
+  <text x="1068" y="407" class="small">0-44</text>
+
+  <rect class="box" x="64" y="500" width="1096" height="54" />
+  <text x="94" y="533" class="small">Common deductions: missing context, filler-heavy openings, stammers, outtake markers, awkward pauses, too-short ranges, weak endings, generic hooks.</text>
+
+  <path class="line" d="M244 165 H304" />
+  <path class="line" d="M494 165 C526 150 530 116 554 111" />
+  <path class="line" d="M494 165 C526 176 530 204 554 213" />
+  <path class="line" d="M494 165 C526 224 530 304 554 315" />
+  <path class="line" d="M494 165 C526 270 530 406 554 417" />
+  <path class="line" d="M764 111 C790 124 798 150 824 165" />
+  <path class="line" d="M764 213 C790 198 798 176 824 165" />
+  <path class="line" d="M764 315 C805 286 826 230 824 204" />
+  <path class="line" d="M764 417 C832 362 850 260 846 204" />
+  <path class="line" d="M984 145 C1012 126 1018 110 1030 107" />
+  <path class="line" d="M984 175 C1010 186 1018 198 1030 201" />
+  <path class="line" d="M984 185 C1012 226 1018 282 1030 295" />
+  <path class="line" d="M984 188 C1018 250 1028 350 1030 389" />
+</svg>
+

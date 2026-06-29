@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">Video Review OS pipeline</title>
+  <desc id="desc">Raw videos become project folders, transcripts, clip candidates, quality gate decisions, draft copy, optional renders, dashboards, and human approval.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#334155" />
+    </marker>
+    <style>
+      .bg{fill:#f8fafc}.box{fill:#fff;stroke:#cbd5e1;stroke-width:2;rx:14}.decision{fill:#fff7ed;stroke:#fb923c;stroke-width:2;rx:14}.safe{fill:#ecfdf5;stroke:#34d399;stroke-width:2;rx:14}.stop{fill:#fef2f2;stroke:#f87171;stroke-width:2;rx:14}.title{font:700 26px Arial,sans-serif;fill:#0f172a}.text{font:600 17px Arial,sans-serif;fill:#0f172a}.small{font:14px Arial,sans-serif;fill:#475569}.line{stroke:#334155;stroke-width:2.2;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect class="bg" width="1200" height="620" rx="24" />
+  <text x="48" y="56" class="title">Raw video to reviewable drafts</text>
+  <text x="48" y="84" class="small">Default behavior: create review artifacts, do not publish.</text>
+
+  <rect class="box" x="48" y="132" width="170" height="82" />
+  <text x="75" y="164" class="text">Raw videos</text>
+  <text x="72" y="190" class="small">Dropped in folder</text>
+
+  <rect class="box" x="276" y="132" width="170" height="82" />
+  <text x="319" y="164" class="text">Ingest</text>
+  <text x="306" y="190" class="small">Project folder</text>
+
+  <rect class="box" x="504" y="80" width="190" height="82" />
+  <text x="536" y="112" class="text">Media inspect</text>
+  <text x="534" y="138" class="small">ffprobe metadata</text>
+
+  <rect class="box" x="504" y="184" width="190" height="82" />
+  <text x="535" y="216" class="text">Transcribe</text>
+  <text x="522" y="242" class="small">Words + timestamps</text>
+
+  <rect class="box" x="752" y="132" width="190" height="82" />
+  <text x="789" y="164" class="text">Find clips</text>
+  <text x="779" y="190" class="small">Candidate ranges</text>
+
+  <rect class="decision" x="1000" y="132" width="150" height="82" />
+  <text x="1031" y="164" class="text">Quality</text>
+  <text x="1026" y="190" class="small">Score + flags</text>
+
+  <rect class="safe" x="1000" y="282" width="150" height="82" />
+  <text x="1042" y="314" class="text">Keep</text>
+  <text x="1020" y="340" class="small">May render draft</text>
+
+  <rect class="box" x="752" y="282" width="190" height="82" />
+  <text x="783" y="314" class="text">Trim / review</text>
+  <text x="783" y="340" class="small">Visible, no render</text>
+
+  <rect class="stop" x="504" y="282" width="190" height="82" />
+  <text x="567" y="314" class="text">Reject</text>
+  <text x="545" y="340" class="small">Never render</text>
+
+  <rect class="box" x="276" y="430" width="190" height="82" />
+  <text x="314" y="462" class="text">Draft copy</text>
+  <text x="300" y="488" class="small">Hooks, captions, titles</text>
+
+  <rect class="box" x="524" y="430" width="190" height="82" />
+  <text x="556" y="462" class="text">Dashboard</text>
+  <text x="551" y="488" class="small">Static HTML + JSON</text>
+
+  <rect class="safe" x="772" y="430" width="190" height="82" />
+  <text x="819" y="462" class="text">Approval</text>
+  <text x="800" y="488" class="small">Human review state</text>
+
+  <path class="line" d="M218 173 H276" />
+  <path class="line" d="M446 154 C470 134 480 122 504 121" />
+  <path class="line" d="M446 193 C470 213 480 225 504 225" />
+  <path class="line" d="M694 121 C720 132 725 154 752 163" />
+  <path class="line" d="M694 225 C720 214 725 192 752 182" />
+  <path class="line" d="M942 173 H1000" />
+  <path class="line" d="M1075 214 V282" />
+  <path class="line" d="M1000 202 C974 236 948 260 916 282" />
+  <path class="line" d="M1000 196 C894 268 772 302 694 318" />
+  <path class="line" d="M562 364 C510 414 460 436 466 466" />
+  <path class="line" d="M847 364 C780 416 726 436 714 466" />
+  <path class="line" d="M1000 336 C914 410 830 436 714 466" />
+  <path class="line" d="M466 471 H524" />
+  <path class="line" d="M714 471 H772" />
+</svg>
+
