@@ -34,8 +34,18 @@ def _project_summary(project_dir: Path) -> dict[str, Any]:
         if (project_dir / "drafts" / "copy.json").exists()
         else {"drafts": []}
     )
+    captions = _read_optional(project_dir / "captions.json", {"captions": []})
+    scenes = _read_optional(project_dir / "scenes.json", {"scenes": []})
+    visuals = _read_optional(project_dir / "visuals.json", {"visuals": []})
+    renders = _read_optional(project_dir / "renders.json", {"renders": []})
+    post_queue = _read_optional(project_dir / "post_queue.json", {"items": []})
     approvals = load_approvals(project_dir)
     drafts_by_clip = {draft["clip_id"]: draft for draft in drafts.get("drafts", [])}
+    captions_by_clip = {item["clip_id"]: item for item in captions.get("captions", [])}
+    scenes_by_clip = {item["clip_id"]: _scene_with_uris(item) for item in scenes.get("scenes", [])}
+    visuals_by_clip = {item["clip_id"]: _visual_with_uris(item) for item in visuals.get("visuals", [])}
+    renders_by_clip = {item["clip_id"]: item for item in renders.get("renders", [])}
+    post_by_clip = {item["clip_id"]: item for item in post_queue.get("items", [])}
     candidates = []
     for candidate in clips.get("candidates", []):
         candidates.append(
@@ -48,6 +58,11 @@ def _project_summary(project_dir: Path) -> dict[str, Any]:
                 "flags": candidate.get("quality_gate", {}).get("flags", []),
                 "text": candidate.get("text", ""),
                 "draft": drafts_by_clip.get(candidate["clip_id"]),
+                "caption": captions_by_clip.get(candidate["clip_id"]),
+                "scenes": scenes_by_clip.get(candidate["clip_id"]),
+                "visual": visuals_by_clip.get(candidate["clip_id"]),
+                "render": renders_by_clip.get(candidate["clip_id"]),
+                "post_queue": post_by_clip.get(candidate["clip_id"]),
                 "approval_status": approval_status(candidate, approvals),
                 "renders_by_default": candidate["decision"] == "keep",
             }
@@ -59,6 +74,34 @@ def _project_summary(project_dir: Path) -> dict[str, Any]:
         "project_dir": str(project_dir),
         "candidates": candidates,
     }
+
+
+def _read_optional(path: Path, fallback: dict[str, Any]) -> dict[str, Any]:
+    return read_json(path) if path.exists() else fallback
+
+
+def _scene_with_uris(scene: dict[str, Any]) -> dict[str, Any]:
+    copy = dict(scene)
+    frames = []
+    for frame in scene.get("frames", []):
+        item = dict(frame)
+        path = item.get("path")
+        if path and item.get("status") == "written":
+            local_path = Path(path)
+            if local_path.exists():
+                item["uri"] = local_path.resolve().as_uri()
+        frames.append(item)
+    copy["frames"] = frames
+    return copy
+
+
+def _visual_with_uris(visual: dict[str, Any]) -> dict[str, Any]:
+    copy = dict(visual)
+    for key in ["thumbnail_svg", "scene_card_svg"]:
+        path = copy.get(key)
+        if path and Path(path).exists():
+            copy[f"{key}_uri"] = Path(path).resolve().as_uri()
+    return copy
 
 
 def dashboard_html(data: dict[str, Any]) -> str:
@@ -79,6 +122,11 @@ def dashboard_html(data: dict[str, Any]) -> str:
     .clip {{ background: #fff; border: 1px solid #d8d8d1; border-radius: 8px; padding: 14px; margin: 12px 0; }}
     .row {{ display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }}
     .pill {{ border-radius: 999px; border: 1px solid #c9c9c1; padding: 3px 8px; font-size: 12px; }}
+    .frames {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 10px 0; }}
+    .frames img {{ width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; border: 1px solid #d8d8d1; background: #eee; }}
+    .frame-placeholder {{ display: grid; place-items: center; min-height: 78px; border: 1px dashed #c9c9c1; border-radius: 6px; color: #5b5d57; font-size: 12px; }}
+    .visual {{ margin: 10px 0; }}
+    .visual img {{ width: 100%; max-width: 520px; aspect-ratio: 16 / 9; object-fit: contain; border-radius: 6px; border: 1px solid #d8d8d1; background: #111827; }}
     .decision-keep {{ background: #e8f5ec; }}
     .decision-trim {{ background: #fff4d6; }}
     .decision-review {{ background: #e8eef8; }}
@@ -91,6 +139,9 @@ def dashboard_html(data: dict[str, Any]) -> str:
       .meta {{ color: #b8bbb2; }}
       .clip {{ background: #22231f; border-color: #44463f; }}
       pre {{ background: #171816; }}
+      .frames img {{ border-color: #44463f; background: #171816; }}
+      .frame-placeholder {{ border-color: #44463f; color: #b8bbb2; }}
+      .visual img {{ border-color: #44463f; }}
     }}
   </style>
 </head>
@@ -114,9 +165,19 @@ root.innerHTML = data.projects.map(project => `
           <span class="pill">score ${{clip.score ?? 'n/a'}}</span>
           <span class="pill">${{Number(clip.start).toFixed(1)}}-${{Number(clip.end).toFixed(1)}}s</span>
           <span class="pill">${{escapeHtml(clip.approval_status)}}</span>
+          ${{clip.caption ? `<span class="pill">captions ${{escapeHtml(clip.caption.status)}}</span>` : ''}}
+          ${{clip.scenes ? `<span class="pill">frames ${{writtenFrames(clip.scenes)}}/${{clip.scenes.frames?.length || 0}}</span>` : ''}}
+          ${{clip.visual ? `<span class="pill">visual ${{escapeHtml(clip.visual.status)}}</span>` : ''}}
+          ${{clip.render ? `<span class="pill">render ${{escapeHtml(clip.render.status)}}</span>` : ''}}
+          ${{clip.post_queue ? `<span class="pill">post ${{escapeHtml(clip.post_queue.status)}}</span>` : ''}}
         </div>
+        ${{clip.visual?.thumbnail_svg_uri ? `<div class="visual"><img src="${{escapeHtml(clip.visual.thumbnail_svg_uri)}}" alt="${{escapeHtml(clip.clip_id)}} thumbnail draft"></div>` : ''}}
+        ${{clip.scenes?.frames?.length ? `<div class="frames">${{clip.scenes.frames.map(frame => frame.uri ? `<img src="${{escapeHtml(frame.uri)}}" alt="${{escapeHtml(clip.clip_id)}} frame ${{frame.index}}">` : `<span class="frame-placeholder">${{Number(frame.timestamp).toFixed(1)}}s - ${{escapeHtml(frame.status)}}</span>`).join('')}}</div>` : ''}}
         <p>${{escapeHtml(clip.text || 'No transcript text available.')}}</p>
         ${{clip.draft ? `<details><summary>Draft copy</summary><pre>${{escapeHtml(JSON.stringify(clip.draft, null, 2))}}</pre></details>` : ''}}
+        ${{clip.caption ? `<details><summary>Caption files</summary><pre>${{escapeHtml(JSON.stringify(clip.caption, null, 2))}}</pre></details>` : ''}}
+        ${{clip.visual ? `<details><summary>Visual drafts</summary><pre>${{escapeHtml(JSON.stringify(clip.visual, null, 2))}}</pre></details>` : ''}}
+        ${{clip.post_queue ? `<details><summary>Post queue item</summary><pre>${{escapeHtml(JSON.stringify(clip.post_queue, null, 2))}}</pre></details>` : ''}}
         ${{clip.flags.length ? `<details><summary>Quality flags</summary><pre>${{escapeHtml(JSON.stringify(clip.flags, null, 2))}}</pre></details>` : ''}}
       </article>
     `).join('')}}
@@ -124,6 +185,9 @@ root.innerHTML = data.projects.map(project => `
 `).join('');
 function escapeHtml(value) {{
   return String(value).replace(/[&<>"']/g, char => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[char]));
+}}
+function writtenFrames(scene) {{
+  return (scene.frames || []).filter(frame => frame.status === 'written').length;
 }}
 </script>
 </body>

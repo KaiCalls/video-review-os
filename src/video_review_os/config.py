@@ -54,6 +54,34 @@ class CopyConfig:
 
 
 @dataclass(frozen=True)
+class CaptionConfig:
+    max_chars: int = 42
+    max_seconds: float = 3.5
+    include_decisions: tuple[str, ...] = ("keep", "trim", "review")
+
+
+@dataclass(frozen=True)
+class SceneConfig:
+    frames_per_clip: int = 3
+    image_extension: str = "jpg"
+    include_decisions: tuple[str, ...] = ("keep", "trim", "review")
+
+
+@dataclass(frozen=True)
+class VisualConfig:
+    thumbnail_width: int = 1280
+    thumbnail_height: int = 720
+    scene_card_width: int = 1080
+    scene_card_height: int = 1920
+    brand_accent: str = "#2563eb"
+    background: str = "#111827"
+    text_color: str = "#ffffff"
+    mascot_image_path: Path | None = None
+    logo_image_path: Path | None = None
+    include_decisions: tuple[str, ...] = ("keep", "trim", "review")
+
+
+@dataclass(frozen=True)
 class RenderConfig:
     video_codec: str = "libx264"
     audio_codec: str = "aac"
@@ -69,6 +97,9 @@ class VideoReviewConfig:
     transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
     gate: GateConfig = field(default_factory=GateConfig)
     copy: CopyConfig = field(default_factory=CopyConfig)
+    captions: CaptionConfig = field(default_factory=CaptionConfig)
+    scenes: SceneConfig = field(default_factory=SceneConfig)
+    visuals: VisualConfig = field(default_factory=VisualConfig)
     render: RenderConfig = field(default_factory=RenderConfig)
 
     @classmethod
@@ -83,6 +114,9 @@ class VideoReviewConfig:
             transcription=_section(TranscriptionConfig, raw.get("transcription", {})),
             gate=_section(GateConfig, raw.get("quality_gate", {})),
             copy=_section(CopyConfig, raw.get("copy", {})),
+            captions=_caption_config(raw.get("captions", {})),
+            scenes=_scene_config(raw.get("scenes", {})),
+            visuals=_visual_config(raw.get("visuals", {}), base),
             render=_render_config(raw.get("render", {})),
         )
 
@@ -117,6 +151,61 @@ def _render_config(values: dict[str, Any]) -> RenderConfig:
         preset=config.preset,
         crf=config.crf,
         default_decisions=tuple(decisions),
+    )
+
+
+def _caption_config(values: dict[str, Any]) -> CaptionConfig:
+    defaults = CaptionConfig()
+    include_decisions = values.get("include_decisions", list(defaults.include_decisions))
+    clean = {key: value for key, value in values.items() if key != "include_decisions"}
+    config = _section(CaptionConfig, clean)
+    return CaptionConfig(
+        max_chars=config.max_chars,
+        max_seconds=config.max_seconds,
+        include_decisions=tuple(include_decisions),
+    )
+
+
+def _scene_config(values: dict[str, Any]) -> SceneConfig:
+    defaults = SceneConfig()
+    include_decisions = values.get("include_decisions", list(defaults.include_decisions))
+    clean = {key: value for key, value in values.items() if key != "include_decisions"}
+    config = _section(SceneConfig, clean)
+    return SceneConfig(
+        frames_per_clip=config.frames_per_clip,
+        image_extension=config.image_extension,
+        include_decisions=tuple(include_decisions),
+    )
+
+
+def _visual_config(values: dict[str, Any], base: Path) -> VisualConfig:
+    defaults = VisualConfig()
+    include_decisions = values.get("include_decisions", list(defaults.include_decisions))
+    clean = {
+        key: value
+        for key, value in values.items()
+        if key not in {"include_decisions", "mascot_image_path", "logo_image_path"}
+    }
+    config = _section(VisualConfig, clean)
+
+    def optional_path(name: str) -> Path | None:
+        raw = values.get(name)
+        if raw is None or str(raw).strip() == "":
+            return None
+        path = Path(os.path.expandvars(str(raw))).expanduser()
+        return path if path.is_absolute() else base / path
+
+    return VisualConfig(
+        thumbnail_width=config.thumbnail_width,
+        thumbnail_height=config.thumbnail_height,
+        scene_card_width=config.scene_card_width,
+        scene_card_height=config.scene_card_height,
+        brand_accent=config.brand_accent,
+        background=config.background,
+        text_color=config.text_color,
+        mascot_image_path=optional_path("mascot_image_path"),
+        logo_image_path=optional_path("logo_image_path"),
+        include_decisions=tuple(include_decisions),
     )
 
 
@@ -159,6 +248,29 @@ provider = "fallback"
 hosted_endpoint_env = "VIDEO_REVIEW_COPY_ENDPOINT"
 hosted_api_key_env = "VIDEO_REVIEW_COPY_API_KEY"
 
+[captions]
+max_chars = 42
+max_seconds = 3.5
+include_decisions = ["keep", "trim", "review"]
+
+[scenes]
+frames_per_clip = 3
+image_extension = "jpg"
+include_decisions = ["keep", "trim", "review"]
+
+[visuals]
+thumbnail_width = 1280
+thumbnail_height = 720
+scene_card_width = 1080
+scene_card_height = 1920
+brand_accent = "#2563eb"
+background = "#111827"
+text_color = "#ffffff"
+# Optional local brand assets. Leave blank for the generic open-source theme.
+mascot_image_path = ""
+logo_image_path = ""
+include_decisions = ["keep", "trim", "review"]
+
 [render]
 video_codec = "libx264"
 audio_codec = "aac"
@@ -170,4 +282,3 @@ default_decisions = ["keep"]
 
 def write_example_config(path: Path) -> None:
     atomic_write_text(path, EXAMPLE_CONFIG)
-

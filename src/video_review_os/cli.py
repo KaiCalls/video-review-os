@@ -6,13 +6,17 @@ from pathlib import Path
 from typing import Iterable
 
 from .approval import approve_clip
+from .captions import write_project_captions
 from .clip_select import select_project_clips
 from .config import VideoReviewConfig, write_example_config
 from .copy import draft_project_copy
 from .dashboard import build_dashboard
 from .ingest import discover_videos, ingest_many, ingest_video
+from .posting import create_post_queue
 from .render import render_project
+from .scenes import extract_project_scenes
 from .transcribe import transcribe_project
+from .visuals import make_project_visuals
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -51,9 +55,46 @@ def main(argv: list[str] | None = None) -> int:
         print(draft_project_copy(resolve_project(args.project, config), config))
         return 0
 
+    if args.command == "captions":
+        print(write_project_captions(resolve_project(args.project, config), config))
+        return 0
+
+    if args.command == "scenes":
+        print(
+            extract_project_scenes(
+                resolve_project(args.project, config),
+                config,
+                dry_run=args.dry_run,
+                strict=args.strict,
+            )
+        )
+        return 0
+
+    if args.command == "visuals":
+        print(make_project_visuals(resolve_project(args.project, config), config, dry_run=args.dry_run))
+        return 0
+
     if args.command == "render":
         include = tuple(args.include or config.render.default_decisions)
-        print(render_project(resolve_project(args.project, config), config, include, args.dry_run))
+        print(
+            render_project(
+                resolve_project(args.project, config),
+                config,
+                include,
+                args.dry_run,
+                burn_captions=args.burn_captions,
+            )
+        )
+        return 0
+
+    if args.command == "post-queue":
+        print(
+            create_post_queue(
+                resolve_project(args.project, config),
+                platform=args.platform,
+                include_unapproved=args.include_unapproved,
+            )
+        )
         return 0
 
     if args.command == "dashboard":
@@ -68,7 +109,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "run-once":
-        projects = run_once(config, render=args.render, include=args.include)
+        projects = run_once(
+            config,
+            render=args.render,
+            include=args.include,
+            burn_captions=args.burn_captions,
+            scenes=not args.no_scenes,
+            visuals=not args.no_visuals,
+            post_queue=args.post_queue,
+        )
         json_path, html_path = build_dashboard(config, projects)
         for project in projects:
             print(project)
@@ -78,7 +127,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "watch":
         while True:
-            run_once(config, render=args.render, include=args.include)
+            run_once(
+                config,
+                render=args.render,
+                include=args.include,
+                burn_captions=args.burn_captions,
+                scenes=not args.no_scenes,
+                visuals=not args.no_visuals,
+                post_queue=args.post_queue,
+            )
             build_dashboard(config)
             time.sleep(args.interval)
 
@@ -111,6 +168,18 @@ def build_parser() -> argparse.ArgumentParser:
     draft = sub.add_parser("draft-copy", help="Create draft copy sidecars")
     draft.add_argument("project")
 
+    captions = sub.add_parser("captions", help="Write SRT/VTT caption sidecars for visible candidates")
+    captions.add_argument("project")
+
+    scenes = sub.add_parser("scenes", help="Extract representative frame images for clip review")
+    scenes.add_argument("project")
+    scenes.add_argument("--dry-run", action="store_true", help="Plan frame timestamps without calling ffmpeg")
+    scenes.add_argument("--strict", action="store_true", help="Fail when frame extraction fails")
+
+    visuals = sub.add_parser("visuals", help="Make SVG thumbnail and scene-card drafts from extracted frames")
+    visuals.add_argument("project")
+    visuals.add_argument("--dry-run", action="store_true")
+
     render = sub.add_parser("render", help="Render MP4 drafts for allowed decisions")
     render.add_argument("project")
     render.add_argument(
@@ -120,6 +189,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Decision to render. Defaults to keep only. Reject never renders.",
     )
     render.add_argument("--dry-run", action="store_true")
+    render.add_argument("--burn-captions", action="store_true", help="Burn existing SRT sidecars into MP4 renders")
+
+    post_queue = sub.add_parser("post-queue", help="Create a manual post queue for approved rendered clips")
+    post_queue.add_argument("project")
+    post_queue.add_argument("--platform", default="generic")
+    post_queue.add_argument("--include-unapproved", action="store_true", help="Include blocked items for review")
 
     dashboard = sub.add_parser("dashboard", help="Build static dashboard JSON and HTML")
     dashboard.add_argument("projects", nargs="*")
@@ -133,11 +208,19 @@ def build_parser() -> argparse.ArgumentParser:
     run_once_cmd = sub.add_parser("run-once", help="Scan watch folder and run review artifacts once")
     run_once_cmd.add_argument("--render", action="store_true", help="Render default keep clips")
     run_once_cmd.add_argument("--include", action="append", choices=["keep", "trim", "review"])
+    run_once_cmd.add_argument("--burn-captions", action="store_true", help="Burn caption sidecars into rendered MP4s")
+    run_once_cmd.add_argument("--no-scenes", action="store_true", help="Skip representative frame extraction")
+    run_once_cmd.add_argument("--no-visuals", action="store_true", help="Skip thumbnail and scene-card draft generation")
+    run_once_cmd.add_argument("--post-queue", action="store_true", help="Write a manual post queue artifact")
 
     watch = sub.add_parser("watch", help="Poll the watch folder and refresh review artifacts")
     watch.add_argument("--interval", type=int, default=60)
     watch.add_argument("--render", action="store_true", help="Render default keep clips")
     watch.add_argument("--include", action="append", choices=["keep", "trim", "review"])
+    watch.add_argument("--burn-captions", action="store_true", help="Burn caption sidecars into rendered MP4s")
+    watch.add_argument("--no-scenes", action="store_true", help="Skip representative frame extraction")
+    watch.add_argument("--no-visuals", action="store_true", help="Skip thumbnail and scene-card draft generation")
+    watch.add_argument("--post-queue", action="store_true", help="Write a manual post queue artifact")
 
     return parser
 
@@ -147,6 +230,10 @@ def run_once(
     *,
     render: bool = False,
     include: Iterable[str] | None = None,
+    burn_captions: bool = False,
+    scenes: bool = True,
+    visuals: bool = True,
+    post_queue: bool = False,
 ) -> list[Path]:
     videos = discover_videos(config.paths.watch_dir)
     projects = [ingest_video(video, config) for video in videos]
@@ -154,8 +241,15 @@ def run_once(
         transcribe_project(project, config)
         select_project_clips(project, config)
         draft_project_copy(project, config)
+        write_project_captions(project, config)
+        if scenes:
+            extract_project_scenes(project, config)
+        if visuals:
+            make_project_visuals(project, config)
         if render:
-            render_project(project, config, include)
+            render_project(project, config, include, burn_captions=burn_captions)
+        if post_queue:
+            create_post_queue(project)
     return projects
 
 
@@ -171,4 +265,3 @@ def resolve_project(value: str | Path, config: VideoReviewConfig) -> Path:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

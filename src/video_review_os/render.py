@@ -22,6 +22,7 @@ def render_project(
     config: VideoReviewConfig,
     include_decisions: Iterable[str] | None = None,
     dry_run: bool = False,
+    burn_captions: bool = False,
 ) -> Path:
     source = read_json(project_dir / "source.json")
     clips = read_json(project_dir / "clips.json")
@@ -39,7 +40,12 @@ def render_project(
                 }
             )
             continue
-        output = project_dir / "renders" / f"{candidate['clip_id']}-{slugify(candidate.get('decision', 'draft'))}.mp4"
+        caption_path = project_dir / "captions" / f"{candidate['clip_id']}.srt"
+        active_caption = caption_path if burn_captions and caption_path.exists() else None
+        suffix = f"{candidate['clip_id']}-{slugify(candidate.get('decision', 'draft'))}"
+        if active_caption:
+            suffix = f"{suffix}-captioned"
+        output = project_dir / "renders" / f"{suffix}.mp4"
         if dry_run:
             renders.append(
                 {
@@ -47,16 +53,27 @@ def render_project(
                     "decision": candidate["decision"],
                     "status": "dry-run",
                     "output_path": str(output),
+                    "burned_captions": active_caption is not None,
+                    "caption_path": str(active_caption) if active_caption else None,
                 }
             )
             continue
-        render_clip(video_path, output, float(candidate["start"]), float(candidate["end"]), config)
+        render_clip(
+            video_path,
+            output,
+            float(candidate["start"]),
+            float(candidate["end"]),
+            config,
+            caption_path=active_caption,
+        )
         renders.append(
             {
                 "clip_id": candidate["clip_id"],
                 "decision": candidate["decision"],
                 "status": "rendered",
                 "output_path": str(output),
+                "burned_captions": active_caption is not None,
+                "caption_path": str(active_caption) if active_caption else None,
             }
         )
     artifact = {
@@ -67,6 +84,7 @@ def render_project(
         "include_decisions": list(include),
         "reject_never_renders": True,
         "auto_publish_enabled": False,
+        "burn_captions_requested": burn_captions,
         "renders": renders,
     }
     out = project_dir / "renders.json"
@@ -74,10 +92,19 @@ def render_project(
     return out
 
 
-def render_clip(video_path: Path, output_path: Path, start: float, end: float, config: VideoReviewConfig) -> None:
+def render_clip(
+    video_path: Path,
+    output_path: Path,
+    start: float,
+    end: float,
+    config: VideoReviewConfig,
+    *,
+    caption_path: Path | None = None,
+) -> None:
     ensure_dir(output_path.parent)
     duration = max(0.0, end - start)
     tmp_path = output_path.with_suffix(output_path.suffix + ".tmp")
+    subtitle_args = ["-vf", _subtitle_filter(caption_path)] if caption_path else []
     command = [
         config.media.ffmpeg_path,
         "-hide_banner",
@@ -88,6 +115,7 @@ def render_clip(video_path: Path, output_path: Path, start: float, end: float, c
         str(video_path),
         "-t",
         f"{duration:.3f}",
+        *subtitle_args,
         "-c:v",
         config.render.video_codec,
         "-preset",
@@ -110,3 +138,7 @@ def render_clip(video_path: Path, output_path: Path, start: float, end: float, c
         raise RuntimeError(exc.stderr.strip() or str(exc)) from exc
     os.replace(tmp_path, output_path)
 
+
+def _subtitle_filter(path: Path) -> str:
+    value = path.resolve().as_posix().replace(":", "\\:").replace("'", "\\'")
+    return f"subtitles='{value}'"

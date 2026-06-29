@@ -5,40 +5,56 @@
 ![Publishing](https://img.shields.io/badge/auto--publishing-disabled-red)
 ![Storage](https://img.shields.io/badge/storage-local--first-lightgrey)
 
-Turn raw video folders into reviewable clip drafts without giving automation permission to publish.
+Local video clipping infrastructure for creators and small teams.
 
-Video Review OS is a local-first Python pipeline for creators, agencies, and small teams that record more video than they can review. Drop raw files into a folder and get organized project folders, transcripts, clip candidates, quality reports, captions, titles, optional MP4 drafts, and a simple review dashboard.
+Drop raw videos into a folder. Video Review OS creates project folders, transcribes the source, finds candidate clips, scores clip quality, cuts MP4 drafts, writes caption files, pulls frame stills, makes thumbnail and scene-card SVG drafts, prepares copy, builds a static review dashboard, and can prepare an approved manual post queue.
 
-The important part: it stops before publishing. A person stays in the approval path.
+The default is still review-only. It does not publish automatically, does not connect social accounts by default, and does not move files into handoff folders unless you explicitly build that workflow around it.
 
-## The Short Version
+## What It Does
 
-Raw footage goes in. Reviewable drafts come out.
+Video Review OS is for the first-pass review work that happens before a clip becomes public:
 
-Video Review OS helps you answer four practical questions:
-
-- What useful clips are hiding in this long recording?
-- Which clips are actually understandable to a viewer?
-- What needs trimming, context, or rejection?
-- What can a human review before anything goes public?
-
-It is built for boring reliability, not autopilot posting.
+- Ingest raw videos from a local watch folder.
+- Inspect media with `ffprobe`.
+- Transcribe with local Whisper, faster-whisper, hosted adapters, or deterministic fallback.
+- Select candidate clip ranges from transcript and timing data.
+- Flag clips that fail from the audience's point of view.
+- Cut/render MP4 drafts with `ffmpeg`.
+- Write SRT and VTT caption sidecars.
+- Optionally burn captions into MP4 renders.
+- Extract representative frame stills for each candidate clip.
+- Generate thumbnail and vertical scene-card SVG drafts from frames.
+- Overlay optional local mascot/logo assets from config.
+- Draft hooks, titles, captions, and review notes.
+- Build `dashboard.json` and a static `index.html` review dashboard.
+- Track local approval state tied to the exact source hash, time range, and transcript text.
+- Prepare `post_queue.json` only for clips that are approved and rendered.
 
 ## What You Get From One Run
 
 | Output | What it means |
 | --- | --- |
-| Source project folder | A clean folder for each raw video. |
-| `source.json` | File hash, media metadata, duration, codecs, and safety state. |
+| Source project folder | A clean local folder for each raw video. |
+| `source.json` | File hash, original path, active path, media metadata, streams, codecs, and safety state. |
 | `transcript.json` | Transcript segments and word timestamps when transcription is configured. |
 | `clips.json` | Candidate clip ranges with `keep`, `trim`, `review`, or `reject` decisions. |
-| `drafts/copy.json` | Hook, title, caption, and copy quality notes. |
+| `quality_gate` entries | Audience-first flags for context, starts, pacing, endings, and standalone usefulness. |
+| `captions/` | SRT and VTT caption sidecars for visible candidates. |
+| `captions.json` | Caption manifest with cue counts and source signature. |
+| `scenes/` | Frame stills extracted from candidate clip ranges. |
+| `scenes.json` | Scene-frame manifest with timestamps and extraction status. |
+| `visuals/` | SVG thumbnail drafts and vertical scene-card drafts made from frames. |
+| `visuals.json` | Visual draft manifest, including optional mascot/logo usage. |
+| `drafts/copy.json` | Hook, title, caption, copy quality notes, and deterministic fallback copy. |
 | `renders/` | Optional MP4 drafts for clips allowed by policy. |
+| `renders.json` | Render manifest, including whether captions were burned in. |
 | `dashboard.json` | Machine-readable review state. |
 | `dashboard/index.html` | Static mobile-friendly dashboard for human review. |
 | `approvals.json` | Local approval state tied to the exact source clip and time range. |
+| `post_queue.json` | Manual post queue for approved rendered clips. Auto-publishing remains disabled. |
 
-## The Pipeline
+## Pipeline
 
 ![Video Review OS pipeline](docs/diagrams/pipeline.svg)
 
@@ -47,124 +63,70 @@ It is built for boring reliability, not autopilot posting.
 
 ```mermaid
 flowchart LR
-    A["Raw video folder"] --> B["Ingest"]
-    B --> C["Source project folder"]
-    C --> D["ffprobe media inspection"]
-    C --> E["Transcription adapter"]
-    E --> F["Transcript and word timestamps"]
-    F --> G["Clip candidate selection"]
-    D --> G
-    G --> H["Audience quality gate"]
-    H --> I["Copy drafts"]
-    H --> J{"Decision"}
-    J -->|keep| K["Optional MP4 draft render"]
-    J -->|trim| L["Visible candidate, no default render"]
-    J -->|review| M["Visible candidate, no default render"]
-    J -->|reject| N["Never render"]
-    I --> O["Static review dashboard"]
-    K --> O
-    L --> O
+    A["Raw video folder"] --> B["Ingest project"]
+    B --> C["ffprobe media inspection"]
+    B --> D["Transcribe words"]
+    C --> E["Clip candidate selection"]
+    D --> E
+    E --> F["Audience quality gate"]
+    F --> G{"Decision"}
+    G -->|keep| H["Cut MP4 draft"]
+    G -->|trim/review| I["Visible candidate only"]
+    G -->|reject| J["Never render"]
+    F --> K["SRT/VTT captions"]
+    F --> L["Frame extraction"]
+    L --> M["Thumbnail SVGs"]
+    L --> N["Scene-card SVGs"]
+    K --> O["Static dashboard"]
     M --> O
     N --> O
+    H --> O
+    I --> O
+    J --> O
     O --> P["Human approval"]
+    P --> Q["Manual post queue"]
+    Q --> R["Optional adapter"]
+    R --> S["Explicit publish action"]
 ```
 
 </details>
 
-## The Safety Model
+## Why It Exists
 
-![Video Review OS approval safety model](docs/diagrams/safety-model.svg)
+Hosted clip tools are useful when you want speed, templates, social account connection, and polished editor workflows.
 
-<details>
-<summary>Mermaid source</summary>
+Video Review OS is different. It is a local-first review pipeline for teams that want to inspect every artifact before anything leaves the machine.
 
-```mermaid
-flowchart TD
-    A["Generated clip draft"] --> B{"Does it match the source hash?"}
-    B -->|No| X["Approval does not carry forward"]
-    B -->|Yes| C{"Does it match the same time range?"}
-    C -->|No| X
-    C -->|Yes| D{"Does it match the same transcript text?"}
-    D -->|No| X
-    D -->|Yes| E["Previous local approval can be shown"]
-    E --> F["Still no auto-publish command"]
-```
+It is built around simple files:
 
-</details>
+- JSON sidecars.
+- SRT/VTT captions.
+- Extracted JPEG frames.
+- SVG visual drafts.
+- MP4 render drafts.
+- Static dashboard files.
 
-Approval is local review state. It is not a publishing permission slip.
-
-## The Decision Gate
-
-![Video Review OS decision gate](docs/diagrams/decision-gate.svg)
-
-<details>
-<summary>Mermaid source</summary>
-
-```mermaid
-flowchart TB
-    A["Candidate clip"] --> B["Start at 100 points"]
-    B --> C["Check viewer context"]
-    C --> D["Check opening quality"]
-    D --> E["Check transcript and timing"]
-    E --> F["Check ending and copy quality"]
-    F --> G{"Fatal issue?"}
-    G -->|Yes| R["reject"]
-    G -->|No| H{"Score"}
-    H -->|80-100| K["keep"]
-    H -->|65-79| T["trim"]
-    H -->|45-64| V["review"]
-    H -->|0-44| R
-```
-
-</details>
-
-The gate is audience-first. It looks for clips that may contain a decent sentence but still fail as standalone content.
+No hidden database is required for the MVP. No source video is deleted.
 
 ## How This Compares To Opus Clip And Other Clip Tools
 
-Video Review OS is not trying to replace hosted editors. It sits earlier in the workflow.
-
-Most AI clip tools optimize for speed, polish, and platform output. Video Review OS optimizes for local review, inspectable artifacts, and explicit human approval.
-
 | Tool | Best at | What Video Review OS does differently |
 | --- | --- | --- |
-| [Opus Clip](https://www.opus.pro/) | Turning long videos into many short clips and publishing or scheduling them from a hosted workflow. | Keeps the pipeline local-first, stores JSON sidecars, avoids connected social accounts, and defaults to no publishing. |
-| [Descript](https://www.descript.com/) | Full text-based video and podcast editing, recording, transcription, cleanup, and publishing. | Does not try to be a full editor. It triages raw footage and creates review artifacts before a clip enters an editor. |
-| [Riverside Magic Clips](https://riverside.com/magic-clips) | Recording plus AI-generated social clips, captions, presets, and ready-to-share outputs. | Works from ordinary local folders and focuses on auditability, quality flags, and approval state instead of recording-room workflow. |
-| [CapCut](https://www.capcut.com/tools/ai-video-editor) | Consumer/prosumer creative editing, templates, captions, effects, and AI-assisted video creation. | Does not focus on effects or templates. It decides whether a clip is understandable and safe to draft before creative styling. |
+| [Opus Clip](https://www.opus.pro/) | Hosted long-video-to-shorts workflows, AI captions, reframing, B-roll, scheduling, and social publishing. | Runs local-first, keeps JSON/SRT/VTT/SVG/MP4 artifacts inspectable, and defaults to no social connection or auto-publish. |
+| [Descript](https://www.descript.com/) | Full video and podcast editing, transcription, recording, cleanup, and collaboration. | Does not try to replace a full editor. It creates a review queue, clip candidates, frames, captions, and draft assets before editing or posting. |
+| [Riverside Magic Clips](https://riverside.com/magic-clips) | Recording plus AI-generated social clips, captions, and shareable outputs. | Works from ordinary local folders and emphasizes artifact auditability, quality flags, and approval state. |
+| [CapCut](https://www.capcut.com/tools/ai-video-editor) | Creative editing, templates, captions, effects, and AI-assisted video creation. | Focuses on review infrastructure: safe cutting, captions, scene frames, visual drafts, and explicit approval before handoff. |
 | Manual editing | Maximum human judgment. | Reduces the first-pass review burden while keeping the final decision with a person. |
 
-### The Positioning
+Use a hosted editor when you want an all-in-one creative suite.
 
-Use Opus Clip, Descript, Riverside, or CapCut when you want a polished hosted editor.
+Use Video Review OS when you want a boring local pipeline that shows its work.
 
-Use Video Review OS when you want:
+## Quality Gate
 
-- Local files first.
-- No social account connection.
-- No automatic publishing.
-- Deterministic sidecar artifacts.
-- A visible review queue.
-- Quality gates that flag bad starts, missing context, outtakes, awkward pauses, and weak endings.
-- Approval state that resets when the source clip changes.
+The quality gate scores clips from the audience's point of view, not just transcript length.
 
-## Who It Is For
-
-- Creators with folders full of raw footage.
-- Editors who need a first-pass review queue.
-- Agencies that want inspectable draft artifacts before client review.
-- Small teams that need a safe internal clipping pipeline.
-- Developers who want an open base for custom video review workflows.
-
-## Who It Is Not For
-
-- People who want one-click publishing.
-- People who want a full creative timeline editor.
-- People who want cloud-hosted account management.
-- People who want fully automated “viral” posting without review.
-
-## What The Gate Flags
+It flags:
 
 - Starts mid-thought.
 - Missing context.
@@ -172,66 +134,63 @@ Use Video Review OS when you want:
 - Stammers and restarts.
 - Slate or outtake markers such as `cut five`.
 - Repeated placeholder or nonsense words.
-- Incomplete video ranges.
+- Incomplete ranges.
 - Awkward silence or long pauses.
 - Too-short standalone clips.
 - Weak ending words.
 - Generic hooks and low-value captions.
+
+![Video Review OS decision gate](docs/diagrams/decision-gate.svg)
 
 ## Clip Decisions
 
 | Decision | Meaning | Default render behavior |
 | --- | --- | --- |
 | `keep` | Strong enough to become a draft. | Renders by default when rendering is requested. |
-| `trim` | Promising, but needs edit work. | Visible, but does not render by default. |
-| `review` | Unclear; needs a person to inspect it. | Visible, but does not render by default. |
-| `reject` | Bad range, outtake, too short, or unsafe to use. | Never renders. |
+| `trim` | Promising, but needs edit work. | Visible, captioned, and visualized, but does not render by default. |
+| `review` | Unclear; needs a person to inspect it. | Visible, captioned, and visualized, but does not render by default. |
+| `reject` | Bad range, outtake, too short, or unsafe to use. | Never renders, never enters the post queue. |
 
-## Core Features
+## Captions, Frames, And Visual Drafts
 
-### Local-First Ingest
+Video Review OS does not stop at transcript text.
 
-- Watches or scans a configurable raw video folder.
-- Creates deterministic project folders.
-- Stores source hash, filename, file size, media duration, streams, codecs, and safety metadata.
-- Never deletes source videos.
+For each visible candidate, it can create:
 
-### Pluggable Transcription
+- `captions/<clip_id>.srt`
+- `captions/<clip_id>.vtt`
+- `scenes/<clip_id>/frame-001.jpg`
+- `scenes/<clip_id>/frame-002.jpg`
+- `scenes/<clip_id>/frame-003.jpg`
+- `visuals/thumbnails/<clip_id>.svg`
+- `visuals/scene-cards/<clip_id>.svg`
 
-- Works with deterministic fallback when no provider is configured.
-- Supports local `openai-whisper`.
-- Supports `faster-whisper` for CPU-friendly local transcription.
-- Includes a generic hosted HTTP adapter for teams that want an external provider.
-- Keeps provider output as JSON sidecars instead of hiding it in a database.
+The visual drafts use extracted frames as the background or scene stack. If `mascot_image_path` or `logo_image_path` is set in config, those local assets are embedded into the generated SVGs. The repository ships with no private brand assets.
 
-### Draft Copy
+## Approval Safety
 
-Video Review OS creates reviewable:
+Approval does not carry forward unless the regenerated draft matches the same:
 
-- Titles.
-- Hooks.
-- Captions.
-- Notes.
-- Copy quality flags.
+- Source video hash.
+- Clip start time.
+- Clip end time.
+- Transcript text hash.
 
-If an LLM or hosted copy provider is not configured, the pipeline still produces deterministic fallback copy so the workflow does not break.
+![Video Review OS approval safety model](docs/diagrams/safety-model.svg)
 
-### FFmpeg Rendering
+Approval is local review state. It is not publishing permission.
 
-- Uses `ffmpeg` for clip rendering.
-- Writes temporary files first, then renames.
-- Defaults to `keep` only.
-- Allows explicit rendering of `trim` or `review` clips when requested.
-- Does not render `reject` clips.
+## Posting Model
 
-### Static Review Dashboard
+This project can prepare a manual post queue. It does not publish by default.
 
-The dashboard is just files:
+`post_queue.json` only marks an item ready when:
 
-- `dashboard.json`
-- `index.html`
+- The clip is not rejected.
+- The clip has a matching local approval.
+- The clip has a rendered MP4 draft.
 
-It can be opened locally on desktop or mobile. It shows candidates, scores, decisions, flags, transcript snippets, draft copy, and approval status.
+Actual platform posting should live in an explicit adapter that you wire in yourself. That adapter should still require an approval check before sending anything.
 
 ## Install
 
@@ -277,13 +236,24 @@ Open:
 dashboard/index.html
 ```
 
-Render approved-by-policy drafts:
+Render default draft clips:
 
 ```bash
 video-review-os --config config.toml run-once --render
 ```
 
-By default, this renders only `keep` clips.
+Render with burned captions:
+
+```bash
+video-review-os --config config.toml run-once --render --burn-captions
+```
+
+Prepare a manual post queue after review and render:
+
+```bash
+video-review-os --config config.toml approve projects/sample-video-abc123 clip-001
+video-review-os --config config.toml post-queue projects/sample-video-abc123 --platform generic
+```
 
 ## CLI Commands
 
@@ -294,10 +264,15 @@ video-review-os --config config.toml ingest raw/video.mp4
 video-review-os --config config.toml transcribe projects/sample-video-abc123
 video-review-os --config config.toml select-clips projects/sample-video-abc123
 video-review-os --config config.toml draft-copy projects/sample-video-abc123
+video-review-os --config config.toml captions projects/sample-video-abc123
+video-review-os --config config.toml scenes projects/sample-video-abc123
+video-review-os --config config.toml visuals projects/sample-video-abc123
 video-review-os --config config.toml render projects/sample-video-abc123
+video-review-os --config config.toml render projects/sample-video-abc123 --burn-captions
 video-review-os --config config.toml render projects/sample-video-abc123 --include trim
-video-review-os --config config.toml dashboard
 video-review-os --config config.toml approve projects/sample-video-abc123 clip-001 --reviewer "local-reviewer"
+video-review-os --config config.toml post-queue projects/sample-video-abc123 --platform generic
+video-review-os --config config.toml dashboard
 video-review-os --config config.toml run-once
 video-review-os --config config.toml watch --interval 60
 ```
@@ -341,6 +316,28 @@ provider = "fallback" # fallback, generic-http
 hosted_endpoint_env = "VIDEO_REVIEW_COPY_ENDPOINT"
 hosted_api_key_env = "VIDEO_REVIEW_COPY_API_KEY"
 
+[captions]
+max_chars = 42
+max_seconds = 3.5
+include_decisions = ["keep", "trim", "review"]
+
+[scenes]
+frames_per_clip = 3
+image_extension = "jpg"
+include_decisions = ["keep", "trim", "review"]
+
+[visuals]
+thumbnail_width = 1280
+thumbnail_height = 720
+scene_card_width = 1080
+scene_card_height = 1920
+brand_accent = "#2563eb"
+background = "#111827"
+text_color = "#ffffff"
+mascot_image_path = ""
+logo_image_path = ""
+include_decisions = ["keep", "trim", "review"]
+
 [render]
 video_codec = "libx264"
 audio_codec = "aac"
@@ -357,69 +354,65 @@ src/video_review_os/
   transcribe.py
   quality_gate.py
   clip_select.py
+  captions.py
+  scenes.py
+  visuals.py
   render.py
   copy.py
   dashboard.py
   approval.py
+  posting.py
   cli.py
 tests/
 examples/
+docs/diagrams/
 ```
 
 ## Artifact Examples
 
-`source.json`:
+`visuals.json`:
 
 ```json
 {
-  "schema_version": "video_review_os.source.v1",
+  "schema_version": "video_review_os.visuals.v1",
   "project_id": "sample-video-abc123",
-  "source": {
-    "original_path": "/videos/raw/sample-video.mp4",
-    "active_path": "/videos/raw/sample-video.mp4",
-    "sha256": "abc123...",
-    "filename": "sample-video.mp4"
+  "source_sha256": "abc123...",
+  "outputs": {
+    "thumbnails_dir": "projects/sample-video-abc123/visuals/thumbnails",
+    "scene_cards_dir": "projects/sample-video-abc123/visuals/scene-cards"
   },
-  "media": {
-    "ok": true,
-    "duration_seconds": 320.4,
-    "video": { "codec": "h264", "width": 1920, "height": 1080 },
-    "audio": { "codec": "aac", "sample_rate": 48000, "channels": 2 }
-  },
-  "safety": {
-    "source_deleted": false,
-    "source_moved": false,
-    "auto_publish_enabled": false
-  }
+  "visuals": [
+    {
+      "clip_id": "clip-001",
+      "decision": "keep",
+      "status": "written",
+      "thumbnail_svg": "projects/sample-video-abc123/visuals/thumbnails/clip-001.svg",
+      "scene_card_svg": "projects/sample-video-abc123/visuals/scene-cards/clip-001.svg",
+      "frame_count": 3,
+      "uses_mascot": false,
+      "uses_logo": false
+    }
+  ]
 }
 ```
 
-`clips.json`:
+`post_queue.json`:
 
 ```json
 {
-  "schema_version": "video_review_os.clips.v1",
-  "project_id": "sample-video-abc123",
-  "candidates": [
+  "schema_version": "video_review_os.post_queue.v1",
+  "platform": "generic",
+  "auto_publish_enabled": false,
+  "requires_explicit_adapter": true,
+  "items": [
     {
       "clip_id": "clip-001",
-      "start": 14.2,
-      "end": 42.8,
-      "text": "A complete thought from the transcript.",
-      "decision": "keep",
-      "quality_gate": {
-        "score": 88,
-        "decision": "keep",
-        "render_allowed_default": true,
-        "flags": []
-      }
+      "status": "ready_for_manual_post",
+      "media_path": "projects/sample-video-abc123/renders/clip-001-keep.mp4",
+      "title": "Draft title",
+      "caption": "Draft caption"
     }
-  ],
-  "selection_policy": {
-    "default_render_decisions": ["keep"],
-    "reject_never_renders": true,
-    "auto_publish_enabled": false
-  }
+  ]
 }
 ```
 
@@ -434,10 +427,10 @@ Manual smoke test:
 
 1. Put one video in `raw/`.
 2. Run `video-review-os --config config.toml run-once`.
-3. Check the project folder for `source.json`, `transcript.json`, `clips.json`, and `drafts/copy.json`.
+3. Check the project folder for `source.json`, `transcript.json`, `clips.json`, `captions.json`, `scenes.json`, `visuals.json`, and `drafts/copy.json`.
 4. Run `video-review-os --config config.toml render <project> --dry-run`.
 5. Run `video-review-os --config config.toml dashboard`.
-6. Confirm `dashboard/index.html` shows candidates and decisions.
+6. Confirm `dashboard/index.html` shows candidates, frame stills, visual drafts, decisions, and approval state.
 
 ## Security And Privacy
 
@@ -445,16 +438,17 @@ Manual smoke test:
 - Do not put API keys in `config.toml`; use environment variables.
 - Treat generated transcripts as sensitive.
 - Treat project folders as sensitive because JSON sidecars can contain local file paths and transcript text.
-- Review generated copy before using it externally.
+- Mascot and logo assets are local paths in config. Do not commit private assets.
+- Review generated copy and visual drafts before using them externally.
 - Source videos are never deleted by this tool.
 
 ## Non-Goals
 
 - No auto-publishing by default.
 - No hidden uploads.
+- No automatic social account connection.
 - No automatic movement into platform handoff folders.
-- No platform account automation.
+- No bundled private brand assets, mascots, or deployment assumptions.
 - No claim that a `keep` clip is approved for publication.
 - No attempt to replace human editorial review.
 - No destructive source video cleanup.
-- No private deployment assumptions.

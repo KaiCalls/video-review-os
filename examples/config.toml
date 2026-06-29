@@ -34,10 +34,31 @@ provider = "fallback"
 hosted_endpoint_env = "VIDEO_REVIEW_COPY_ENDPOINT"
 hosted_api_key_env = "VIDEO_REVIEW_COPY_API_KEY"
 
+[captions]
+max_chars = 42
+max_seconds = 3.5
+include_decisions = ["keep", "trim", "review"]
+
+[scenes]
+frames_per_clip = 3
+image_extension = "jpg"
+include_decisions = ["keep", "trim", "review"]
+
+[visuals]
+thumbnail_width = 1280
+thumbnail_height = 720
+scene_card_width = 1080
+scene_card_height = 1920
+brand_accent = "#2563eb"
+background = "#111827"
+text_color = "#ffffff"
+mascot_image_path = ""
+logo_image_path = ""
+include_decisions = ["keep", "trim", "review"]
+
 [render]
 video_codec = "libx264"
 audio_codec = "aac"
 preset = "veryfast"
 crf = 23
 default_decisions = ["keep"]
-
