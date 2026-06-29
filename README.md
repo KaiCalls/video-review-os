@@ -1,34 +1,127 @@
 # Video Review OS
 
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+![Default](https://img.shields.io/badge/default-review--only-green)
+![Publishing](https://img.shields.io/badge/auto--publishing-disabled-red)
+![Storage](https://img.shields.io/badge/storage-local--first-lightgrey)
+
 Turn raw video folders into reviewable clip drafts without giving automation permission to publish.
 
-Video Review OS is a local-first Python pipeline for creators, agencies, and small teams that record more video than they can review. Drop raw files into a folder and get organized source projects, transcripts, clip candidates, quality reports, captions, titles, optional MP4 drafts, and a simple review dashboard.
+Video Review OS is a local-first Python pipeline for creators, agencies, and small teams that record more video than they can review. Drop raw files into a folder and get organized project folders, transcripts, clip candidates, quality reports, captions, titles, optional MP4 drafts, and a simple review dashboard.
 
-The default workflow stops at review. It does not upload. It does not post. It does not move files into platform handoff folders. A person stays in the approval path.
+The important part: it stops before publishing. A person stays in the approval path.
 
-## What It Does
+## The Short Version
 
-Video Review OS takes a raw video and produces:
+Raw footage goes in. Reviewable drafts come out.
 
-- A source project folder with inspectable JSON sidecars.
-- Media metadata from `ffprobe`.
-- Transcript and word-timestamp artifacts when a provider is configured.
-- Candidate short clips and long-form segment ranges.
-- Audience-first quality gate reports.
-- Hook, title, and caption drafts.
-- Optional rendered MP4 drafts.
-- Static dashboard JSON and HTML for mobile review.
-- Local approval state tied to the exact source clip and time range.
+Video Review OS helps you answer four practical questions:
 
-## Why It Exists
+- What useful clips are hiding in this long recording?
+- Which clips are actually understandable to a viewer?
+- What needs trimming, context, or rejection?
+- What can a human review before anything goes public?
 
-Most short-form pipelines are optimized for speed. That creates a predictable failure mode: bad clips get pushed forward because they contain a decent sentence somewhere in the transcript.
+It is built for boring reliability, not autopilot posting.
 
-Video Review OS is built around a different rule:
+## What You Get From One Run
 
-The clip has to work for a viewer who did not see the original recording.
+| Output | What it means |
+| --- | --- |
+| Source project folder | A clean folder for each raw video. |
+| `source.json` | File hash, media metadata, duration, codecs, and safety state. |
+| `transcript.json` | Transcript segments and word timestamps when transcription is configured. |
+| `clips.json` | Candidate clip ranges with `keep`, `trim`, `review`, or `reject` decisions. |
+| `drafts/copy.json` | Hook, title, caption, and copy quality notes. |
+| `renders/` | Optional MP4 drafts for clips allowed by policy. |
+| `dashboard.json` | Machine-readable review state. |
+| `dashboard/index.html` | Static mobile-friendly dashboard for human review. |
+| `approvals.json` | Local approval state tied to the exact source clip and time range. |
 
-That means the pipeline checks more than topic relevance. It looks for missing setup, mid-thought starts, filler-heavy openings, awkward pauses, outtake markers, weak endings, and short ranges that do not stand alone.
+## The Pipeline
+
+```mermaid
+flowchart LR
+    A[Raw video folder] --> B[Ingest]
+    B --> C[Source project folder]
+    C --> D[ffprobe media inspection]
+    C --> E[Transcription adapter]
+    E --> F[Transcript + word timestamps]
+    F --> G[Clip candidate selection]
+    D --> G
+    G --> H[Audience quality gate]
+    H --> I[Copy drafts]
+    H --> J{Decision}
+    J -->|keep| K[Optional MP4 draft render]
+    J -->|trim| L[Visible candidate, no default render]
+    J -->|review| M[Visible candidate, no default render]
+    J -->|reject| N[Never render]
+    I --> O[Static review dashboard]
+    K --> O
+    L --> O
+    M --> O
+    N --> O
+    O --> P[Human approval]
+```
+
+## The Safety Model
+
+```mermaid
+flowchart TD
+    A[Generated clip draft] --> B{Does it match the source hash?}
+    B -->|No| X[Approval does not carry forward]
+    B -->|Yes| C{Does it match the same time range?}
+    C -->|No| X
+    C -->|Yes| D{Does it match the same transcript text?}
+    D -->|No| X
+    D -->|Yes| E[Previous local approval can be shown]
+    E --> F[Still no auto-publish command]
+```
+
+Approval is local review state. It is not a publishing permission slip.
+
+## The Decision Gate
+
+```mermaid
+flowchart TB
+    A[Candidate clip] --> B[Start at 100 points]
+    B --> C[Check viewer context]
+    C --> D[Check opening quality]
+    D --> E[Check transcript and timing]
+    E --> F[Check ending and copy quality]
+    F --> G{Fatal issue?}
+    G -->|Yes| R[reject]
+    G -->|No| H{Score}
+    H -->|80-100| K[keep]
+    H -->|65-79| T[trim]
+    H -->|45-64| V[review]
+    H -->|0-44| R
+```
+
+The gate is audience-first. It looks for clips that may contain a decent sentence but still fail as standalone content.
+
+## What The Gate Flags
+
+- Starts mid-thought.
+- Missing context.
+- Filler-heavy openings.
+- Stammers and restarts.
+- Slate or outtake markers such as `cut five`.
+- Repeated placeholder or nonsense words.
+- Incomplete video ranges.
+- Awkward silence or long pauses.
+- Too-short standalone clips.
+- Weak ending words.
+- Generic hooks and low-value captions.
+
+## Clip Decisions
+
+| Decision | Meaning | Default render behavior |
+| --- | --- | --- |
+| `keep` | Strong enough to become a draft. | Renders by default when rendering is requested. |
+| `trim` | Promising, but needs edit work. | Visible, but does not render by default. |
+| `review` | Unclear; needs a person to inspect it. | Visible, but does not render by default. |
+| `reject` | Bad range, outtake, too short, or unsafe to use. | Never renders. |
 
 ## Core Features
 
@@ -44,35 +137,8 @@ That means the pipeline checks more than topic relevance. It looks for missing s
 - Works with deterministic fallback when no provider is configured.
 - Supports local `openai-whisper`.
 - Supports `faster-whisper` for CPU-friendly local transcription.
-- Includes a generic hosted HTTP adapter for teams that want a cheap external provider.
+- Includes a generic hosted HTTP adapter for teams that want an external provider.
 - Keeps provider output as JSON sidecars instead of hiding it in a database.
-
-### Quality Gates Built For Viewers
-
-The scorer flags clips that may look fine in a transcript but fail in the feed:
-
-- Starts mid-thought.
-- Missing context.
-- Filler-heavy openings.
-- Stammers and restarts.
-- Slate or outtake markers such as `cut five`.
-- Repeated placeholder or nonsense words.
-- Incomplete video ranges.
-- Awkward silence or long pauses.
-- Too-short standalone clips.
-- Weak ending words.
-- Generic hooks and low-value captions.
-
-### Clip Decisions
-
-Each candidate receives one of four decisions:
-
-- `keep`: strong enough to render by default.
-- `trim`: promising, but needs edit work.
-- `review`: visible in the dashboard, not rendered by default.
-- `reject`: never rendered.
-
-Only `keep` clips become rendered post drafts by default. `trim` and `review` remain visible. `reject` clips never render.
 
 ### Draft Copy
 
@@ -102,17 +168,6 @@ The dashboard is just files:
 - `index.html`
 
 It can be opened locally on desktop or mobile. It shows candidates, scores, decisions, flags, transcript snippets, draft copy, and approval status.
-
-### Approval State That Cannot Drift Silently
-
-Approval is tied to a stable signature:
-
-- Source video hash.
-- Start time.
-- End time.
-- Transcript text hash.
-
-If a draft is regenerated with a different source, range, or transcript, the old approval does not carry forward.
 
 ## Install
 
