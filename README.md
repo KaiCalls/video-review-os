@@ -7,9 +7,11 @@
 
 Local video clipping infrastructure for creators and small teams.
 
-Drop raw videos into a folder. Video Review OS creates project folders, transcribes the source, finds candidate clips, scores clip quality, cuts MP4 drafts, writes caption files, pulls frame stills, makes thumbnail and scene-card SVG drafts, prepares copy, builds a static review dashboard, and can prepare an approved manual post queue.
+Drop raw videos into a folder. Video Review OS creates project folders, transcribes the source, finds candidate clips, scores clip quality, **turns the gate's findings into actionable repair ops, assembles finished multi-range edit drafts (trim filler, drop dead air, combine moments, add bridge/title cards), and renders them to MP4**, writes caption files, pulls frame stills, makes thumbnail and scene-card SVG drafts, prepares copy, builds a static review dashboard, and can prepare an approved manual post queue.
 
-The default is still review-only. It does not publish automatically, does not connect social accounts by default, and does not move files into handoff folders unless you explicitly build that workflow around it.
+It does not just sort clips into keep/reject. It repairs and assembles them into watchable drafts automatically — then waits for a human.
+
+The default is still review-only. It does not publish automatically, does not connect social accounts by default, and does not move files into handoff folders unless you explicitly build that workflow around it. Reject clips are never assembled, never rendered, and never queued.
 
 ## What It Does
 
@@ -19,8 +21,10 @@ Video Review OS is for the first-pass review work that happens before a clip bec
 - Inspect media with `ffprobe`.
 - Transcribe with local Whisper, faster-whisper, hosted adapters, or deterministic fallback.
 - Select candidate clip ranges from transcript and timing data.
-- Flag clips that fail from the audience's point of view.
-- Cut/render MP4 drafts with `ffmpeg`.
+- Flag clips that fail from the audience's point of view, and emit deterministic **repair ops** (trim the weak ending, drop the awkward pause, cut the filler opening) instead of only flags.
+- **Propose a storyboard** (deterministic fallback, or your own LLM endpoint) that can combine, reorder, and bridge clips into finished assemblies.
+- **Resolve assemblies into a concrete edit decision list (EDL)** of source ranges plus title/bridge cards, applying the repair ops.
+- Cut/render MP4 drafts with `ffmpeg`, including **multi-range assemblies stitched from several source ranges plus generated cards**.
 - Write SRT and VTT caption sidecars.
 - Optionally burn captions into MP4 renders.
 - Extract representative frame stills for each candidate clip.
@@ -39,7 +43,13 @@ Video Review OS is for the first-pass review work that happens before a clip bec
 | `source.json` | File hash, original path, active path, media metadata, streams, codecs, and safety state. |
 | `transcript.json` | Transcript segments and word timestamps when transcription is configured. |
 | `clips.json` | Candidate clip ranges with `keep`, `trim`, `review`, or `reject` decisions. |
-| `quality_gate` entries | Audience-first flags for context, starts, pacing, endings, and standalone usefulness. |
+| `quality_gate` entries | Audience-first flags plus `repair_ops` (actionable trim/drop/lead-in instructions) for each candidate. |
+| `silence.json` | Detected audio dead-air intervals (`silencedetect`) the assembly layer drops. |
+| `storyboard.json` | Proposal for how candidates become assemblies: members, order, bridge/title cards, rationale. |
+| `assemblies.json` | Finished edit decision lists (EDLs): ordered source ranges + cards, applied/unresolved ops, signature. Reject clips never appear. |
+| `assembly_renders.json` | Render manifest for the auto-generated assembly MP4 drafts. |
+| `assembly_captions.json` + `captions/assemblies/` | Full-timeline SRT/VTT for each assembly, plus per-segment SRTs burned into renders. |
+| `assembly_post_queue.json` | Manual post queue for approved, rendered assemblies. Auto-publishing remains disabled. |
 | `captions/` | SRT and VTT caption sidecars for visible candidates. |
 | `captions.json` | Caption manifest with cue counts and source signature. |
 | `scenes/` | Frame stills extracted from candidate clip ranges. |
@@ -68,11 +78,13 @@ flowchart LR
     B --> D["Transcribe words"]
     C --> E["Clip candidate selection"]
     D --> E
-    E --> F["Audience quality gate"]
+    E --> F["Audience quality gate + repair ops"]
     F --> G{"Decision"}
-    G -->|keep| H["Cut MP4 draft"]
-    G -->|trim/review| I["Visible candidate only"]
-    G -->|reject| J["Never render"]
+    G -->|keep / trim / review| T["Storyboard proposal (combine / reorder / bridge)"]
+    G -->|reject| J["Never assembled, never rendered"]
+    SIL["Detect audio silence"] --> U
+    T --> U["Assemble EDL: ranges + cards, apply repair ops, drop silence"]
+    U --> V["Render assembly MP4 (single-pass: reframe + loudnorm + music + captions)"]
     F --> K["SRT/VTT captions"]
     F --> L["Frame extraction"]
     L --> M["Thumbnail SVGs"]
@@ -80,10 +92,9 @@ flowchart LR
     K --> O["Static dashboard"]
     M --> O
     N --> O
-    H --> O
-    I --> O
+    V --> O
     J --> O
-    O --> P["Human approval"]
+    O --> P["Human approval (assembly signature)"]
     P --> Q["Manual post queue"]
     Q --> R["Optional adapter"]
     R --> S["Explicit publish action"]
@@ -146,10 +157,73 @@ It flags:
 
 | Decision | Meaning | Default render behavior |
 | --- | --- | --- |
-| `keep` | Strong enough to become a draft. | Renders by default when rendering is requested. |
-| `trim` | Promising, but needs edit work. | Visible, captioned, and visualized, but does not render by default. |
-| `review` | Unclear; needs a person to inspect it. | Visible, captioned, and visualized, but does not render by default. |
-| `reject` | Bad range, outtake, too short, or unsafe to use. | Never renders, never enters the post queue. |
+| `keep` | Strong enough to become a draft. | Becomes an assembly; renders when rendering is requested. |
+| `trim` | Promising, but needs edit work. | Becomes an assembly with its repair ops applied (filler/pause/weak-ending trimmed). |
+| `review` | Unclear; needs a person to inspect it. | Becomes an assembly; repair ops applied, but flagged for human attention. |
+| `reject` | Bad range, outtake, too short, or unsafe to use. | Never assembled, never renders, never enters the post queue. |
+
+The decision is no longer the end of the story. The quality gate also emits **repair ops** — concrete, deterministic edit instructions derived from the same evidence that produced the flags:
+
+| Repair op | Triggered by | What it does |
+| --- | --- | --- |
+| `trim_start` | Filler-heavy opening, stammer/restart | Move the in-point past the leading filler or restart. |
+| `trim_end` | Weak ending word | Move the out-point before the trailing "and / so / but". |
+| `drop_span` | Awkward pause | Split the range to remove the longest dead-air gap. |
+| `add_lead_in` | Starts mid-thought, missing context | Suggestion only — needs an adjacent range, so it is left for the storyboard or a person to resolve (never guessed). |
+
+## Storyboards And Assemblies
+
+A clip decision says whether a single range is usable. An **assembly** is the actual deliverable: an ordered edit decision list (EDL) of source ranges and generated cards, with repair ops applied. A plain single-range clip is just a one-segment assembly, so nothing about the simple case changes.
+
+Two layers produce them:
+
+1. **Storyboard** (`storyboard.json`) proposes how candidates become assemblies — which clips to combine, in what order, and where to insert title/bridge cards. The default `fallback` provider is deterministic (one assembly per non-reject clip). Point `provider = "generic-http"` at your own LLM endpoint to combine, reorder, and bridge moments into a stronger narrative. The hosted output is sanitized: a provider can never smuggle in a rejected or non-existent clip.
+2. **Assembly** (`assemblies.json`) resolves the proposal into a concrete EDL, applying each clip's repair ops (`drop_span` splits a range, `trim_*` shrinks it), inserting card segments, and computing a signature over the whole ordered list.
+
+```json
+{
+  "schema_version": "video_review_os.assemblies.v1",
+  "policy": { "reject_never_included": true, "auto_publish_enabled": false, "review_only": true },
+  "assemblies": [
+    {
+      "assembly_id": "asm-001",
+      "kind": "multi",
+      "rationale": "Combine the setup and the payoff; drop the dead air; bridge with a card.",
+      "source_clip_ids": ["clip-001", "clip-002"],
+      "member_decisions": ["keep", "trim"],
+      "segments": [
+        { "kind": "card", "card_kind": "title", "text": "How we cut this", "duration": 1.6, "svg_path": "..." },
+        { "kind": "source", "source_sha256": "abc...", "start": 1.0, "end": 7.0, "from_clip_id": "clip-001" },
+        { "kind": "card", "card_kind": "bridge", "text": "Six weeks later", "duration": 1.6, "svg_path": "..." },
+        { "kind": "source", "source_sha256": "abc...", "start": 12.0, "end": 15.0, "from_clip_id": "clip-002" },
+        { "kind": "source", "source_sha256": "abc...", "start": 17.0, "end": 24.0, "from_clip_id": "clip-002" }
+      ],
+      "applied_ops": [ { "op": "trim_end", "to": 7.0 }, { "op": "drop_span", "start": 15.0, "end": 17.0 } ],
+      "unresolved_ops": [],
+      "total_duration": 19.2,
+      "renderable": true,
+      "assembly_signature": "sha256-over-the-ordered-segment-list"
+    }
+  ]
+}
+```
+
+### How the editor behaves
+
+The assembly layer is built to produce something a person would actually post, not a rough cut:
+
+- **Single-pass render.** `render-assemblies` builds the whole draft in one `ffmpeg` `filter_complex` pass — no per-segment intermediate files, no concat-demuxer. This avoids the AAC encoder-priming drift that accumulates when you concat-copy many re-encoded clips.
+- **Audio-truth silence removal.** `silence` runs `silencedetect` over the source and the assembly drops real dead air (breaths, room tone, untranscribed pauses), not just transcript word-gaps.
+- **Hook-first.** Title cards default to the tail (`title_card_position`), so the strongest moment opens the short instead of a branded slate.
+- **Heuristic combiner.** The fallback storyboard merges a clip that starts mid-thought with its immediate lead-in, and folds in adjacent short clips — so `add_lead_in` gets resolved without an LLM. Conservative: source-order only, never reorders, caps at 3 clips.
+- **Reframe, not letterbox.** `fit_mode = "blur"` fills the vertical frame with a blurred background behind the contained source (no black bars); `crop` and `pad` are also available.
+- **Finished audio.** The final mix is loudness-normalized (EBU R128, `loudness_lufs`) and an optional `music_path` is mixed in, ducked under the voice — so silent cards don't drop out.
+- **Styled, burned-in captions** on the final timeline via libass `force_style` (`caption_style`).
+- **Title/bridge cards** draw their text with `drawtext` using an auto-detected (or configured) font; with no font they fall back to a clean color slate (text still lives in the SVG sidecar) — deterministic, never a crash.
+- **Per-platform duration cap** (`max_total_seconds`): over-length assemblies are flagged (`over_duration_target`) and trailing segments trimmed (recorded in `trimmed_seconds`), never silently.
+- **Idempotent re-render**: an assembly whose signature and caption state match an existing render on disk is reported `cached` instead of re-encoded.
+
+Captions are applied to the **final assembled timeline**, not just to source clips. `assembly-captions` (run automatically before a burning render) re-bases each source segment's words to its position on the output timeline and writes a full-timeline `captions/assemblies/<assembly_id>.srt`/`.vtt` sidecar, plus per-segment SRTs that `render-assemblies --burn-captions` burns into each cut (cards stay clean). The captions always match the current EDL, so re-cutting an assembly regenerates them.
 
 ## Captions, Frames, And Visual Drafts
 
@@ -194,17 +268,19 @@ Approval does not carry forward unless the regenerated draft matches the same:
 
 ![Video Review OS approval safety model](docs/diagrams/safety-model.svg)
 
+For an **assembly**, approval is tied to the `assembly_signature` — a hash over the entire ordered segment list (every source range and every card's text/duration). Reordering segments, re-cutting any range, or editing a bridge card invalidates the signature, so an approval can never carry forward onto a different edit. Approve with `approve-assembly`.
+
 Approval is local review state. It is not publishing permission.
 
 ## Posting Model
 
 This project can prepare a manual post queue. It does not publish by default.
 
-`post_queue.json` only marks an item ready when:
+`post_queue.json` (single clips) and `assembly_post_queue.json` (assembly drafts) only mark an item ready when:
 
-- The clip is not rejected.
-- The clip has a matching local approval.
-- The clip has a rendered MP4 draft.
+- It is not rejected (an assembly with any reject member can never reach the queue).
+- It has a matching local approval (clip `approval_key` / `assembly_signature`).
+- It has a rendered MP4 draft.
 
 Actual platform posting should live in an explicit adapter that you wire in yourself. That adapter should still require an approval check before sending anything.
 
@@ -283,13 +359,22 @@ video-review-os --config config.toml draft-copy projects/sample-video-abc123
 video-review-os --config config.toml captions projects/sample-video-abc123
 video-review-os --config config.toml scenes projects/sample-video-abc123
 video-review-os --config config.toml visuals projects/sample-video-abc123
-video-review-os --config config.toml render projects/sample-video-abc123
-video-review-os --config config.toml render projects/sample-video-abc123 --burn-captions
+video-review-os --config config.toml silence projects/sample-video-abc123
+video-review-os --config config.toml storyboard projects/sample-video-abc123
+video-review-os --config config.toml assemble projects/sample-video-abc123
+video-review-os --config config.toml assembly-captions projects/sample-video-abc123
+video-review-os --config config.toml render-assemblies projects/sample-video-abc123
+video-review-os --config config.toml render-assemblies projects/sample-video-abc123 --burn-captions
+video-review-os --config config.toml render-assemblies projects/sample-video-abc123 --dry-run
+video-review-os --config config.toml render projects/sample-video-abc123              # legacy single-clip cuts
 video-review-os --config config.toml render projects/sample-video-abc123 --include trim
 video-review-os --config config.toml approve projects/sample-video-abc123 clip-001 --reviewer "local-reviewer"
+video-review-os --config config.toml approve-assembly projects/sample-video-abc123 asm-001
 video-review-os --config config.toml post-queue projects/sample-video-abc123 --platform generic
+video-review-os --config config.toml assembly-post-queue projects/sample-video-abc123 --platform generic
 video-review-os --config config.toml dashboard
-video-review-os --config config.toml run-once
+video-review-os --config config.toml run-once            # ingest -> ... -> storyboard -> assemble
+video-review-os --config config.toml run-once --render   # also renders the assembled drafts
 video-review-os --config config.toml watch --interval 60
 ```
 
@@ -354,6 +439,37 @@ mascot_image_path = ""
 logo_image_path = ""
 include_decisions = ["keep", "trim", "review"]
 
+[storyboard]
+# How clips become assemblies. fallback = one assembly per non-reject clip.
+# generic-http = your own LLM endpoint that may combine/reorder/bridge.
+provider = "fallback"
+hosted_endpoint_env = "VIDEO_REVIEW_STORYBOARD_ENDPOINT"
+hosted_api_key_env = "VIDEO_REVIEW_STORYBOARD_API_KEY"
+
+[assembly]
+include_decisions = ["keep", "trim", "review"]  # reject is never assembled
+apply_repair_ops = true
+combine = true                 # merge mid-thought clips with their lead-in + adjacent shorts
+max_segments = 12
+max_total_seconds = 60.0       # platform target; longer assemblies are flagged and trimmed
+title_card_position = "tail"   # head | tail | none — "tail" keeps the hook up front
+width = 1080
+height = 1920
+fps = 30
+fit_mode = "blur"              # blur | crop | pad — fills the vertical frame without black bars
+card_background = "#111827"
+card_text_color = "#ffffff"
+card_font_path = ""   # blank = auto-detect a system font; cards draw their text into the video
+card_font_size = 72
+card_seconds = 1.6
+min_segment_seconds = 0.4
+loudness_lufs = -14.0          # normalize the final mix (EBU R128)
+music_path = ""                # optional background music bed, ducked under the voice
+music_volume = 0.12
+silence_min_seconds = 0.6      # waveform dead-air longer than this is dropped
+silence_noise = "-30dB"
+caption_style = "FontName=Arial,FontSize=16,Bold=1,Outline=3,Shadow=0,Alignment=2,MarginV=120,PrimaryColour=&H00FFFFFF&,OutlineColour=&H00000000&"
+
 [render]
 video_codec = "libx264"
 audio_codec = "aac"
@@ -383,6 +499,9 @@ src/video_review_os/
   captions.py
   scenes.py
   visuals.py
+  silence.py
+  storyboard.py
+  assembly.py
   render.py
   copy.py
   dashboard.py
@@ -453,10 +572,10 @@ Manual smoke test:
 
 1. Put one video in `raw/`.
 2. Run `video-review-os --config config.toml run-once`.
-3. Check the project folder for `source.json`, `transcript.json`, `clips.json`, `captions.json`, `scenes.json`, `visuals.json`, and `drafts/copy.json`.
-4. Run `video-review-os --config config.toml render <project> --dry-run`.
+3. Check the project folder for `source.json`, `transcript.json`, `clips.json`, `captions.json`, `scenes.json`, `visuals.json`, `drafts/copy.json`, `storyboard.json`, and `assemblies.json`.
+4. Run `video-review-os --config config.toml render-assemblies <project> --dry-run`, then without `--dry-run` to produce `renders/assemblies/<assembly_id>.mp4`.
 5. Run `video-review-os --config config.toml dashboard`.
-6. Confirm `dashboard/index.html` shows candidates, frame stills, visual drafts, decisions, and approval state.
+6. Confirm `dashboard/index.html` shows the auto-generated assemblies (with their EDLs and repair ops), clip candidates, frame stills, visual drafts, decisions, approval state, and a collapsed "Rejected" section.
 
 ## Security And Privacy
 
@@ -476,6 +595,8 @@ Manual smoke test:
 - No automatic social account connection.
 - No automatic movement into platform handoff folders.
 - No private deployment assumptions.
-- No claim that a `keep` clip is approved for publication.
+- No claim that a `keep` clip or rendered assembly is approved for publication.
+- No assembling, rendering, or queuing of `reject` clips.
+- No auto-applied edits that aren't recorded as inspectable repair ops in the EDL.
 - No attempt to replace human editorial review.
 - No destructive source video cleanup.

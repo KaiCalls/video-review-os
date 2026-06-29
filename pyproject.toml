@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "video-review-os"
-version = "0.2.1"
-description = "Local-first video clipping pipeline with captions, scene frames, visual drafts, renders, post queues, and human approval."
+version = "0.3.0"
+description = "Local-first video clipping pipeline that auto-assembles repaired multi-range edit drafts (storyboard, repair ops, single-pass render) with captions, scene frames, visual drafts, post queues, and human approval."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

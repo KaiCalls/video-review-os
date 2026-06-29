@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .approval import approval_status, load_approvals
+from .approval import approval_status, assembly_approval_status, load_approvals
 from .config import VideoReviewConfig
 from .utils import atomic_write_json, atomic_write_text, ensure_dir, read_json, utc_now_iso
 
@@ -39,6 +39,8 @@ def _project_summary(project_dir: Path) -> dict[str, Any]:
     visuals = _read_optional(project_dir / "visuals.json", {"visuals": []})
     renders = _read_optional(project_dir / "renders.json", {"renders": []})
     post_queue = _read_optional(project_dir / "post_queue.json", {"items": []})
+    assemblies_artifact = _read_optional(project_dir / "assemblies.json", {"assemblies": []})
+    assembly_renders = _read_optional(project_dir / "assembly_renders.json", {"renders": []})
     approvals = load_approvals(project_dir)
     drafts_by_clip = {draft["clip_id"]: draft for draft in drafts.get("drafts", [])}
     captions_by_clip = {item["clip_id"]: item for item in captions.get("captions", [])}
@@ -56,6 +58,7 @@ def _project_summary(project_dir: Path) -> dict[str, Any]:
                 "decision": candidate["decision"],
                 "score": candidate.get("quality_gate", {}).get("score"),
                 "flags": candidate.get("quality_gate", {}).get("flags", []),
+                "repair_ops": candidate.get("quality_gate", {}).get("repair_ops", []),
                 "text": candidate.get("text", ""),
                 "draft": drafts_by_clip.get(candidate["clip_id"]),
                 "caption": captions_by_clip.get(candidate["clip_id"]),
@@ -67,12 +70,34 @@ def _project_summary(project_dir: Path) -> dict[str, Any]:
                 "renders_by_default": candidate["decision"] == "keep",
             }
         )
+    assembly_renders_by_id = {item["assembly_id"]: item for item in assembly_renders.get("renders", [])}
+    assemblies = []
+    for assembly in assemblies_artifact.get("assemblies", []):
+        assemblies.append(
+            {
+                "assembly_id": assembly["assembly_id"],
+                "kind": assembly.get("kind"),
+                "rationale": assembly.get("rationale", ""),
+                "source_clip_ids": assembly.get("source_clip_ids", []),
+                "member_decisions": assembly.get("member_decisions", []),
+                "segment_count": len(assembly.get("segments", [])),
+                "total_duration": assembly.get("total_duration"),
+                "renderable": assembly.get("renderable", False),
+                "segments": assembly.get("segments", []),
+                "applied_ops": assembly.get("applied_ops", []),
+                "unresolved_ops": assembly.get("unresolved_ops", []),
+                "approval_status": assembly_approval_status(assembly, approvals),
+                "render": assembly_renders_by_id.get(assembly["assembly_id"]),
+            }
+        )
+
     return {
         "project_id": source["project_id"],
         "filename": source["source"]["filename"],
         "duration_seconds": source.get("media", {}).get("duration_seconds"),
         "project_dir": str(project_dir),
         "candidates": candidates,
+        "assemblies": assemblies,
     }
 
 
@@ -118,8 +143,12 @@ def dashboard_html(data: dict[str, Any]) -> str:
     main {{ max-width: 1120px; margin: 0 auto; padding: 24px 14px 48px; }}
     h1 {{ font-size: 24px; margin: 0 0 6px; }}
     h2 {{ font-size: 18px; margin: 28px 0 10px; }}
+    h3 {{ font-size: 15px; margin: 18px 0 6px; color: #5b5d57; text-transform: uppercase; letter-spacing: 0.04em; }}
     .meta {{ color: #5b5d57; font-size: 14px; margin-bottom: 18px; }}
     .clip {{ background: #fff; border: 1px solid #d8d8d1; border-radius: 8px; padding: 14px; margin: 12px 0; }}
+    .assembly {{ border-left: 4px solid #2563eb; }}
+    .rejected {{ margin: 12px 0; opacity: 0.85; }}
+    .rejected > summary {{ cursor: pointer; color: #8a3b30; font-size: 14px; }}
     .row {{ display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }}
     .pill {{ border-radius: 999px; border: 1px solid #c9c9c1; padding: 3px 8px; font-size: 12px; }}
     .frames {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 10px 0; }}
@@ -154,17 +183,51 @@ def dashboard_html(data: dict[str, Any]) -> str:
 <script>
 const root = document.getElementById('app');
 const data = JSON.parse(root.dataset.json);
-root.innerHTML = data.projects.map(project => `
+root.innerHTML = data.projects.map(project => {{
+  const visible = project.candidates.filter(c => c.decision !== 'reject');
+  const rejected = project.candidates.filter(c => c.decision === 'reject');
+  const assemblies = project.assemblies || [];
+  return `
   <section>
-    <h2>${{escapeHtml(project.filename)}} <span class="pill">${{project.candidates.length}} candidates</span></h2>
-    ${{project.candidates.map(clip => `
-      <article class="clip">
+    <h2>${{escapeHtml(project.filename)}} <span class="pill">${{project.candidates.length}} candidates</span> <span class="pill">${{assemblies.length}} assemblies</span></h2>
+    ${{assemblies.length ? `<h3>Auto-generated drafts</h3>${{assemblies.map(renderAssembly).join('')}}` : ''}}
+    <h3>Clip candidates</h3>
+    ${{visible.map(renderClip).join('')}}
+    ${{rejected.length ? `<details class="rejected"><summary>Rejected (${{rejected.length}}) &mdash; never rendered, never queued</summary>${{rejected.map(renderClip).join('')}}</details>` : ''}}
+  </section>
+  `;
+}}).join('');
+
+function renderAssembly(a) {{
+  return `
+    <article class="clip assembly">
+      <div class="row">
+        <strong>${{escapeHtml(a.assembly_id)}}</strong>
+        <span class="pill">${{escapeHtml(a.kind || 'single')}}</span>
+        <span class="pill">${{a.segment_count}} segments</span>
+        <span class="pill">${{Number(a.total_duration || 0).toFixed(1)}}s</span>
+        <span class="pill">${{escapeHtml(a.approval_status)}}</span>
+        ${{a.render ? `<span class="pill">render ${{escapeHtml(a.render.status)}}</span>` : ''}}
+        <span class="pill">from ${{escapeHtml((a.source_clip_ids || []).join(', '))}}</span>
+      </div>
+      ${{a.rationale ? `<p>${{escapeHtml(a.rationale)}}</p>` : ''}}
+      <details><summary>Edit decision list (${{a.segment_count}} segments)</summary><pre>${{escapeHtml(JSON.stringify(a.segments, null, 2))}}</pre></details>
+      ${{(a.applied_ops || []).length ? `<details><summary>Applied repair ops</summary><pre>${{escapeHtml(JSON.stringify(a.applied_ops, null, 2))}}</pre></details>` : ''}}
+      ${{(a.unresolved_ops || []).length ? `<details><summary>Needs a person (unresolved)</summary><pre>${{escapeHtml(JSON.stringify(a.unresolved_ops, null, 2))}}</pre></details>` : ''}}
+    </article>
+  `;
+}}
+
+function renderClip(clip) {{
+  return `
+      <article class="clip decision-${{escapeHtml(clip.decision)}}">
         <div class="row">
           <strong>${{escapeHtml(clip.clip_id)}}</strong>
           <span class="pill decision-${{escapeHtml(clip.decision)}}">${{escapeHtml(clip.decision)}}</span>
           <span class="pill">score ${{clip.score ?? 'n/a'}}</span>
           <span class="pill">${{Number(clip.start).toFixed(1)}}-${{Number(clip.end).toFixed(1)}}s</span>
           <span class="pill">${{escapeHtml(clip.approval_status)}}</span>
+          ${{(clip.repair_ops || []).length ? `<span class="pill">repair ${{clip.repair_ops.length}}</span>` : ''}}
           ${{clip.caption ? `<span class="pill">captions ${{escapeHtml(clip.caption.status)}}</span>` : ''}}
           ${{clip.scenes ? `<span class="pill">frames ${{writtenFrames(clip.scenes)}}/${{clip.scenes.frames?.length || 0}}</span>` : ''}}
           ${{clip.visual ? `<span class="pill">visual ${{escapeHtml(clip.visual.status)}}</span>` : ''}}
@@ -174,15 +237,15 @@ root.innerHTML = data.projects.map(project => `
         ${{clip.visual?.thumbnail_svg_uri ? `<div class="visual"><img src="${{escapeHtml(clip.visual.thumbnail_svg_uri)}}" alt="${{escapeHtml(clip.clip_id)}} thumbnail draft"></div>` : ''}}
         ${{clip.scenes?.frames?.length ? `<div class="frames">${{clip.scenes.frames.map(frame => frame.uri ? `<img src="${{escapeHtml(frame.uri)}}" alt="${{escapeHtml(clip.clip_id)}} frame ${{frame.index}}">` : `<span class="frame-placeholder">${{Number(frame.timestamp).toFixed(1)}}s - ${{escapeHtml(frame.status)}}</span>`).join('')}}</div>` : ''}}
         <p>${{escapeHtml(clip.text || 'No transcript text available.')}}</p>
+        ${{(clip.repair_ops || []).length ? `<details><summary>Repair plan (${{clip.repair_ops.length}})</summary><pre>${{escapeHtml(JSON.stringify(clip.repair_ops, null, 2))}}</pre></details>` : ''}}
         ${{clip.draft ? `<details><summary>Draft copy</summary><pre>${{escapeHtml(JSON.stringify(clip.draft, null, 2))}}</pre></details>` : ''}}
         ${{clip.caption ? `<details><summary>Caption files</summary><pre>${{escapeHtml(JSON.stringify(clip.caption, null, 2))}}</pre></details>` : ''}}
         ${{clip.visual ? `<details><summary>Visual drafts</summary><pre>${{escapeHtml(JSON.stringify(clip.visual, null, 2))}}</pre></details>` : ''}}
         ${{clip.post_queue ? `<details><summary>Post queue item</summary><pre>${{escapeHtml(JSON.stringify(clip.post_queue, null, 2))}}</pre></details>` : ''}}
         ${{clip.flags.length ? `<details><summary>Quality flags</summary><pre>${{escapeHtml(JSON.stringify(clip.flags, null, 2))}}</pre></details>` : ''}}
       </article>
-    `).join('')}}
-  </section>
-`).join('');
+  `;
+}}
 function escapeHtml(value) {{
   return String(value).replace(/[&<>"']/g, char => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[char]));
 }}

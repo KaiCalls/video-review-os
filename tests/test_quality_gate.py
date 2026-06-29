@@ -53,3 +53,45 @@ def test_generic_hook_copy_is_flagged():
     assert not result["ok"]
     assert any(flag["id"] == "generic_low_value_hook" for flag in result["flags"])
 
+
+def _op(result, kind):
+    return next((op for op in result["repair_ops"] if op["op"] == kind), None)
+
+
+def test_clean_clip_emits_no_repair_ops():
+    result = evaluate_candidate(
+        candidate("Specific editing decisions make a draft easier to review before anyone publishes it.")
+    )
+    assert result["repair_ops"] == []
+
+
+def test_awkward_pause_emits_a_drop_span_op_with_gap_bounds():
+    words = [
+        {"word": "A", "start": 0.0, "end": 0.2},
+        {"word": "long", "start": 3.1, "end": 3.5},
+        {"word": "pause", "start": 3.6, "end": 4.0},
+    ]
+    result = evaluate_candidate(candidate("A long pause happens here", words=words))
+    op = _op(result, "drop_span")
+    assert op is not None
+    assert op["start"] == 0.2
+    assert op["end"] == 3.1
+
+
+def test_weak_ending_emits_a_trim_end_op():
+    words = [
+        {"word": "this", "start": 0.0, "end": 1.0},
+        {"word": "point", "start": 1.0, "end": 2.0},
+        {"word": "matters", "start": 2.0, "end": 3.0},
+        {"word": "and", "start": 3.0, "end": 4.0},
+    ]
+    result = evaluate_candidate(candidate("this point matters and", words=words))
+    op = _op(result, "trim_end")
+    assert op is not None
+    assert op["to"] == 3.0  # end of the second-to-last word
+
+
+def test_mid_thought_emits_add_lead_in_suggestion():
+    result = evaluate_candidate(candidate("and that is why the clip needs more setup before it stands alone"))
+    assert any(op["op"] == "add_lead_in" for op in result["repair_ops"])
+

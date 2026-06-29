@@ -235,6 +235,33 @@ def _scene_card_svg(
 """
 
 
+def card_svg(text: str, card_kind: str, config: VideoReviewConfig) -> str:
+    """Render a title / bridge / context slate used as a card segment in an assembly.
+
+    Deterministic and dependency-free: just an SVG with the brand background and the
+    card text centered. The renderer turns it (or a solid color fallback) into a short
+    silent clip between source ranges.
+    """
+    width = config.assembly.width
+    height = config.assembly.height
+    background = config.assembly.card_background
+    accent = config.visuals.brand_accent
+    label = card_kind.upper()
+    lines = _text_lines(text or "", 22, 4)
+    line_height = 86
+    block_height = line_height * max(1, len(lines))
+    text_y = int((height - block_height) / 2) + 60
+    title_svg = _svg_lines(lines, 96, text_y, 72, line_height, config.visuals.text_color, 800)
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" role="img">
+  <title>{_xml(text)}</title>
+  <rect width="{width}" height="{height}" fill="{_xml(background)}" />
+  <rect x="0" y="{int(height / 2) - 4}" width="120" height="8" fill="{_xml(accent)}" />
+  <text x="96" y="{text_y - 120}" font-family="Arial, sans-serif" font-size="30" font-weight="700" letter-spacing="4" fill="{_xml(accent)}">{_xml(label)}</text>
+  {title_svg}
+</svg>
+"""
+
+
 def _image_data_uri(path: Path | None) -> str | None:
     if path is None or not path.exists() or not path.is_file():
         return None
