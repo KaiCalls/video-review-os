@@ -71,7 +71,10 @@ def build_caption_cues(
     if not words:
         text = str(candidate.get("text", "")).strip() or "Review this clip before posting."
         return [{"index": 1, "start": 0.0, "end": max(0.1, clip_end - clip_start), "text": text[:max_chars]}]
+    return _chunk_cues(words, max_chars, max_seconds)
 
+
+def _chunk_cues(words: list[dict[str, Any]], max_chars: int, max_seconds: float) -> list[dict[str, Any]]:
     cues: list[dict[str, Any]] = []
     current: list[dict[str, Any]] = []
 
@@ -97,6 +100,85 @@ def build_caption_cues(
         current.append(word)
     flush()
     return cues
+
+
+def build_assembly_captions(project_dir: Path, config: VideoReviewConfig) -> Path:
+    """Caption the *final assembled timeline*, not just the source clips.
+
+    For each assembly we walk the EDL in order, re-base each source segment's words to
+    its position on the output timeline, and write both a full-timeline SRT/VTT sidecar
+    and per-segment SRTs (segment-local) that the renderer burns into each source cut.
+    Card segments advance the clock but carry no cues (the card shows its own text).
+    Deterministic: missing word timings fall back to the clip text as a single cue.
+    """
+    clips = read_json(project_dir / "clips.json")
+    assemblies = read_json(project_dir / "assemblies.json")
+    words_by_clip = {c["clip_id"]: c.get("words", []) for c in clips.get("candidates", [])}
+    text_by_clip = {c["clip_id"]: str(c.get("text", "")) for c in clips.get("candidates", [])}
+    max_chars = config.captions.max_chars
+    max_seconds = config.captions.max_seconds
+    captions_dir = ensure_dir(project_dir / "captions" / "assemblies")
+
+    records = []
+    for assembly in assemblies.get("assemblies", []):
+        assembly_id = assembly["assembly_id"]
+        seg_dir = ensure_dir(captions_dir / assembly_id)
+        out_offset = 0.0
+        full_cues: list[dict[str, Any]] = []
+        segment_captions = []
+        for idx, segment in enumerate(assembly.get("segments", []), start=1):
+            if segment.get("kind") == "source":
+                seg_start = float(segment["start"])
+                seg_end = float(segment["end"])
+                words = _relative_words(words_by_clip.get(segment.get("from_clip_id"), []), seg_start, seg_end)
+                if words:
+                    local = _chunk_cues(words, max_chars, max_seconds)
+                else:
+                    text = text_by_clip.get(segment.get("from_clip_id"), "").strip() or "Review this clip before posting."
+                    local = [{"index": 1, "start": 0.0, "end": max(0.1, seg_end - seg_start), "text": text[:max_chars]}]
+                srt_path = seg_dir / f"seg-{idx:03d}.srt"
+                atomic_write_text(srt_path, cues_to_srt(local))
+                segment_captions.append(
+                    {"segment_index": idx, "srt_path": str(srt_path), "cue_count": len(local)}
+                )
+                for cue in local:
+                    full_cues.append(
+                        {
+                            "index": len(full_cues) + 1,
+                            "start": round(cue["start"] + out_offset, 3),
+                            "end": round(cue["end"] + out_offset, 3),
+                            "text": cue["text"],
+                        }
+                    )
+                out_offset += max(0.0, seg_end - seg_start)
+            else:
+                out_offset += float(segment.get("duration", 0.0))
+
+        full_srt = captions_dir / f"{assembly_id}.srt"
+        full_vtt = captions_dir / f"{assembly_id}.vtt"
+        atomic_write_text(full_srt, cues_to_srt(full_cues))
+        atomic_write_text(full_vtt, cues_to_vtt(full_cues))
+        records.append(
+            {
+                "assembly_id": assembly_id,
+                "status": "written",
+                "srt_path": str(full_srt),
+                "vtt_path": str(full_vtt),
+                "cue_count": len(full_cues),
+                "segment_captions": segment_captions,
+            }
+        )
+
+    artifact = {
+        "schema_version": "video_review_os.assembly_captions.v1",
+        "created_at": utc_now_iso(),
+        "project_id": clips["project_id"],
+        "source_sha256": clips["source_sha256"],
+        "captions": records,
+    }
+    out = project_dir / "assembly_captions.json"
+    atomic_write_json(out, artifact)
+    return out
 
 
 def cues_to_srt(cues: list[dict[str, Any]]) -> str:

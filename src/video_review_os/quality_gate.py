@@ -184,11 +184,15 @@ def evaluate_candidate(candidate: dict[str, Any], config: GateConfig | None = No
     else:
         decision = "reject"
 
+    repair_words = _repair_words(candidate)
+    repair_ops = _build_repair_ops(repair_words, flag_ids, start, end, gate)
+
     return {
-        "schema_version": "video_review_os.quality_gate.v1",
+        "schema_version": "video_review_os.quality_gate.v2",
         "score": score,
         "decision": decision,
         "render_allowed_default": decision == "keep",
+        "repair_ops": repair_ops,
         "flags": flags,
         "metrics": {
             "duration_seconds": round(duration, 3),
@@ -242,3 +246,114 @@ def _max_word_gap(words: list[dict[str, float]]) -> float:
     if len(words) < 2:
         return 0.0
     return max(max(0.0, right["start"] - left["end"]) for left, right in zip(words, words[1:]))
+
+
+def _repair_words(candidate: dict[str, Any]) -> list[dict[str, Any]]:
+    """Word list that preserves the token text (unlike `_word_items`) for trim targeting."""
+    out: list[dict[str, Any]] = []
+    for item in candidate.get("words", []) or []:
+        try:
+            word = str(item.get("word", "")).strip()
+            if not word:
+                continue
+            out.append({"word": word, "start": float(item["start"]), "end": float(item["end"])})
+        except (KeyError, TypeError, ValueError):
+            continue
+    return sorted(out, key=lambda entry: entry["start"])
+
+
+def _norm_word(word: str) -> str:
+    return re.sub(r"[^a-z0-9']+", "", word.lower())
+
+
+def _max_word_gap_bounds(words: list[dict[str, Any]]) -> tuple[float, float, float]:
+    """Return (gap_seconds, span_start, span_end) for the longest inter-word silence."""
+    best = (0.0, 0.0, 0.0)
+    for left, right in zip(words, words[1:]):
+        gap = max(0.0, right["start"] - left["end"])
+        if gap > best[0]:
+            best = (gap, left["end"], right["start"])
+    return best
+
+
+def _build_repair_ops(
+    words: list[dict[str, Any]],
+    flag_ids: set[str],
+    start: float,
+    end: float,
+    gate: GateConfig,
+) -> list[dict[str, Any]]:
+    """Translate diagnostic flags into actionable, deterministic edit instructions.
+
+    Ops with an exact `to`/`start`/`end` are resolvable by the assembly layer without
+    a human. `add_lead_in` is a suggestion that needs an adjacent range, so it is left
+    for the storyboard layer (or a person) to resolve.
+    """
+    ops: list[dict[str, Any]] = []
+
+    trim_start_to: float | None = None
+    trim_reason = ""
+    if "filler_heavy_opening" in flag_ids and words:
+        idx = 0
+        while idx < len(words) and _norm_word(words[idx]["word"]) in FILLERS:
+            idx += 1
+        if 0 < idx < len(words):
+            trim_start_to = words[idx]["start"]
+            trim_reason = "filler_heavy_opening"
+    if "stammer_or_restart" in flag_ids and len(words) >= 3:
+        for i in range(len(words) - 1):
+            left = _norm_word(words[i]["word"])
+            right = _norm_word(words[i + 1]["word"])
+            if left and left == right and left not in {"a", "the"} and i + 2 < len(words):
+                candidate_to = words[i + 2]["start"]
+                if trim_start_to is None or candidate_to > trim_start_to:
+                    trim_start_to = candidate_to
+                    trim_reason = "stammer_or_restart"
+                break
+    if trim_start_to is not None and trim_start_to > start + 0.05:
+        ops.append(
+            {
+                "op": "trim_start",
+                "to": round(trim_start_to, 3),
+                "reason_flag": trim_reason,
+                "confidence": 0.7,
+            }
+        )
+
+    if "weak_ending_word" in flag_ids and len(words) >= 2:
+        cut_to = words[-2]["end"]
+        if start < cut_to < end - 0.05:
+            ops.append(
+                {
+                    "op": "trim_end",
+                    "to": round(cut_to, 3),
+                    "reason_flag": "weak_ending_word",
+                    "confidence": 0.6,
+                }
+            )
+
+    if "awkward_pause" in flag_ids:
+        gap, span_start, span_end = _max_word_gap_bounds(words)
+        if gap > gate.awkward_pause_seconds and span_end > span_start:
+            ops.append(
+                {
+                    "op": "drop_span",
+                    "start": round(span_start, 3),
+                    "end": round(span_end, 3),
+                    "reason_flag": "awkward_pause",
+                    "confidence": 0.85,
+                }
+            )
+
+    if {"starts_mid_thought", "missing_context_opening"} & flag_ids:
+        ops.append(
+            {
+                "op": "add_lead_in",
+                "needs_prior_range": True,
+                "note": "Opening depends on earlier context; combine with the preceding moment or add a context card.",
+                "reason_flag": "starts_mid_thought" if "starts_mid_thought" in flag_ids else "missing_context_opening",
+                "confidence": 0.4,
+            }
+        )
+
+    return ops

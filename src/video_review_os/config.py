@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -82,6 +82,42 @@ class VisualConfig:
 
 
 @dataclass(frozen=True)
+class StoryboardConfig:
+    provider: str = "fallback"
+    hosted_endpoint_env: str = "VIDEO_REVIEW_STORYBOARD_ENDPOINT"
+    hosted_api_key_env: str = "VIDEO_REVIEW_STORYBOARD_API_KEY"
+
+
+@dataclass(frozen=True)
+class AssemblyConfig:
+    include_decisions: tuple[str, ...] = ("keep", "trim", "review")
+    apply_repair_ops: bool = True
+    combine: bool = True
+    max_segments: int = 12
+    max_total_seconds: float = 60.0
+    title_card_position: str = "tail"  # head | tail | none — hook-first keeps content up front
+    width: int = 1080
+    height: int = 1920
+    fps: int = 30
+    fit_mode: str = "blur"  # blur | crop | pad — how source aspect maps into the target frame
+    card_background: str = "#111827"
+    card_text_color: str = "#ffffff"
+    card_font_path: str = ""
+    card_font_size: int = 72
+    card_seconds: float = 1.6
+    min_segment_seconds: float = 0.4
+    loudness_lufs: float = -14.0
+    music_path: str = ""
+    music_volume: float = 0.12
+    silence_min_seconds: float = 0.6
+    silence_noise: str = "-30dB"
+    caption_style: str = (
+        "FontName=Arial,FontSize=16,Bold=1,Outline=3,Shadow=0,Alignment=2,MarginV=120,"
+        "PrimaryColour=&H00FFFFFF&,OutlineColour=&H00000000&"
+    )
+
+
+@dataclass(frozen=True)
 class RenderConfig:
     video_codec: str = "libx264"
     audio_codec: str = "aac"
@@ -100,6 +136,8 @@ class VideoReviewConfig:
     captions: CaptionConfig = field(default_factory=CaptionConfig)
     scenes: SceneConfig = field(default_factory=SceneConfig)
     visuals: VisualConfig = field(default_factory=VisualConfig)
+    storyboard: StoryboardConfig = field(default_factory=StoryboardConfig)
+    assembly: AssemblyConfig = field(default_factory=AssemblyConfig)
     render: RenderConfig = field(default_factory=RenderConfig)
 
     @classmethod
@@ -117,6 +155,8 @@ class VideoReviewConfig:
             captions=_caption_config(raw.get("captions", {})),
             scenes=_scene_config(raw.get("scenes", {})),
             visuals=_visual_config(raw.get("visuals", {}), base),
+            storyboard=_section(StoryboardConfig, raw.get("storyboard", {})),
+            assembly=_assembly_config(raw.get("assembly", {})),
             render=_render_config(raw.get("render", {})),
         )
 
@@ -164,6 +204,15 @@ def _caption_config(values: dict[str, Any]) -> CaptionConfig:
         max_seconds=config.max_seconds,
         include_decisions=tuple(include_decisions),
     )
+
+
+def _assembly_config(values: dict[str, Any]) -> AssemblyConfig:
+    include_decisions = values.get("include_decisions")
+    clean = {key: value for key, value in values.items() if key != "include_decisions"}
+    config = _section(AssemblyConfig, clean)
+    if include_decisions is not None:
+        config = replace(config, include_decisions=tuple(include_decisions))
+    return config
 
 
 def _scene_config(values: dict[str, Any]) -> SceneConfig:
@@ -270,6 +319,40 @@ text_color = "#ffffff"
 mascot_image_path = ""
 logo_image_path = ""
 include_decisions = ["keep", "trim", "review"]
+
+[storyboard]
+# Proposes how candidate clips become finished assemblies (repair + combine + reorder).
+# Options: fallback (one assembly per non-reject clip), generic-http (your own LLM endpoint).
+provider = "fallback"
+hosted_endpoint_env = "VIDEO_REVIEW_STORYBOARD_ENDPOINT"
+hosted_api_key_env = "VIDEO_REVIEW_STORYBOARD_API_KEY"
+
+[assembly]
+# Auto-generated edit drafts. Reject clips are never included. Default stays review-only.
+include_decisions = ["keep", "trim", "review"]
+apply_repair_ops = true
+combine = true                 # merge mid-thought clips with their lead-in + adjacent short clips
+max_segments = 12
+max_total_seconds = 60.0       # platform target; longer assemblies are flagged and trimmed
+title_card_position = "tail"   # head | tail | none — "tail" keeps the hook up front
+width = 1080
+height = 1920
+fps = 30
+fit_mode = "blur"              # blur | crop | pad — how source aspect fills the vertical frame
+card_background = "#111827"
+card_text_color = "#ffffff"
+# Font used to draw card text into the video. Leave blank to auto-detect a system font;
+# if none is found the card renders as a clean color slate (text still lives in the SVG sidecar).
+card_font_path = ""
+card_font_size = 72
+card_seconds = 1.6
+min_segment_seconds = 0.4
+loudness_lufs = -14.0          # normalize the final mix (EBU R128)
+music_path = ""                # optional background music bed, ducked under the voice
+music_volume = 0.12
+silence_min_seconds = 0.6      # waveform dead-air longer than this is dropped
+silence_noise = "-30dB"
+caption_style = "FontName=Arial,FontSize=16,Bold=1,Outline=3,Shadow=0,Alignment=2,MarginV=120,PrimaryColour=&H00FFFFFF&,OutlineColour=&H00000000&"
 
 [render]
 video_codec = "libx264"
