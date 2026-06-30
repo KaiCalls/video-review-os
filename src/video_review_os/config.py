@@ -82,6 +82,23 @@ class VisualConfig:
 
 
 @dataclass(frozen=True)
+class TaggingConfig:
+    provider: str = "fallback"
+    hosted_endpoint_env: str = "VIDEO_REVIEW_TAG_ENDPOINT"
+    hosted_api_key_env: str = "VIDEO_REVIEW_TAG_API_KEY"
+    roster: tuple[str, ...] = ()  # performer names to match in filename/transcript
+    venues: tuple[str, ...] = ()  # venue names to match in filename/transcript
+    buckets: tuple[str, ...] = (
+        "broll_trending",
+        "real_gfa",
+        "direct_camera",
+        "broll_own_audio",
+        "broll_no_text_trending",
+    )
+    default_bucket: str = "broll_trending"
+
+
+@dataclass(frozen=True)
 class StoryboardConfig:
     provider: str = "fallback"
     hosted_endpoint_env: str = "VIDEO_REVIEW_STORYBOARD_ENDPOINT"
@@ -133,6 +150,7 @@ class VideoReviewConfig:
     transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
     gate: GateConfig = field(default_factory=GateConfig)
     copy: CopyConfig = field(default_factory=CopyConfig)
+    tagging: TaggingConfig = field(default_factory=TaggingConfig)
     captions: CaptionConfig = field(default_factory=CaptionConfig)
     scenes: SceneConfig = field(default_factory=SceneConfig)
     visuals: VisualConfig = field(default_factory=VisualConfig)
@@ -152,6 +170,7 @@ class VideoReviewConfig:
             transcription=_section(TranscriptionConfig, raw.get("transcription", {})),
             gate=_section(GateConfig, raw.get("quality_gate", {})),
             copy=_section(CopyConfig, raw.get("copy", {})),
+            tagging=_tagging_config(raw.get("tagging", {})),
             captions=_caption_config(raw.get("captions", {})),
             scenes=_scene_config(raw.get("scenes", {})),
             visuals=_visual_config(raw.get("visuals", {}), base),
@@ -191,6 +210,19 @@ def _render_config(values: dict[str, Any]) -> RenderConfig:
         preset=config.preset,
         crf=config.crf,
         default_decisions=tuple(decisions),
+    )
+
+
+def _tagging_config(values: dict[str, Any]) -> TaggingConfig:
+    defaults = TaggingConfig()
+    tuple_keys = {"roster", "venues", "buckets"}
+    clean = {key: value for key, value in values.items() if key not in tuple_keys}
+    config = _section(TaggingConfig, clean)
+    return replace(
+        config,
+        roster=tuple(values.get("roster", defaults.roster)),
+        venues=tuple(values.get("venues", defaults.venues)),
+        buckets=tuple(values.get("buckets", defaults.buckets)),
     )
 
 
@@ -296,6 +328,20 @@ opening_word_window = 8
 provider = "fallback"
 hosted_endpoint_env = "VIDEO_REVIEW_COPY_ENDPOINT"
 hosted_api_key_env = "VIDEO_REVIEW_COPY_API_KEY"
+
+[tagging]
+# Content tag record per source video (event/performer/venue/energy/orientation/bucket).
+# Auto-tags are a deterministic first pass; inspect and refine them.
+# Options: fallback (heuristics), generic-http (your own LLM endpoint).
+provider = "fallback"
+hosted_endpoint_env = "VIDEO_REVIEW_TAG_ENDPOINT"
+hosted_api_key_env = "VIDEO_REVIEW_TAG_API_KEY"
+# Names matched (whole-word) in filename + transcript to fill performer/venue.
+roster = []
+venues = []
+# First-class content buckets. A clip never leaves the tagger without one.
+buckets = ["broll_trending", "real_gfa", "direct_camera", "broll_own_audio", "broll_no_text_trending"]
+default_bucket = "broll_trending"
 
 [captions]
 max_chars = 42

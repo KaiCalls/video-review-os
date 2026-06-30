@@ -17,6 +17,7 @@ from .render import render_assemblies, render_project
 from .scenes import extract_project_scenes
 from .silence import detect_silence
 from .storyboard import propose_storyboard
+from .tagging import tag_project
 from .transcribe import transcribe_project
 from .visuals import make_project_visuals
 
@@ -55,6 +56,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "draft-copy":
         print(draft_project_copy(resolve_project(args.project, config), config))
+        return 0
+
+    if args.command == "tag":
+        print(tag_project(resolve_project(args.project, config), config))
         return 0
 
     if args.command == "captions":
@@ -218,6 +223,9 @@ def build_parser() -> argparse.ArgumentParser:
     draft = sub.add_parser("draft-copy", help="Create draft copy sidecars")
     draft.add_argument("project")
 
+    tag = sub.add_parser("tag", help="Write a content tag record (event/performer/venue/energy/orientation/bucket)")
+    tag.add_argument("project")
+
     captions = sub.add_parser("captions", help="Write SRT/VTT caption sidecars for visible candidates")
     captions.add_argument("project")
 
@@ -328,6 +336,7 @@ def run_once(
     for project in projects:
         transcribe_project(project, config)
         select_project_clips(project, config)
+        tag_project(project, config)
         draft_project_copy(project, config)
         write_project_captions(project, config)
         if scenes:

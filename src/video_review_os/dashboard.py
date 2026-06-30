@@ -39,6 +39,7 @@ def _project_summary(project_dir: Path) -> dict[str, Any]:
     visuals = _read_optional(project_dir / "visuals.json", {"visuals": []})
     renders = _read_optional(project_dir / "renders.json", {"renders": []})
     post_queue = _read_optional(project_dir / "post_queue.json", {"items": []})
+    tags_artifact = _read_optional(project_dir / "tags.json", {"tags": {}})
     assemblies_artifact = _read_optional(project_dir / "assemblies.json", {"assemblies": []})
     assembly_renders = _read_optional(project_dir / "assembly_renders.json", {"renders": []})
     approvals = load_approvals(project_dir)
@@ -96,6 +97,7 @@ def _project_summary(project_dir: Path) -> dict[str, Any]:
         "filename": source["source"]["filename"],
         "duration_seconds": source.get("media", {}).get("duration_seconds"),
         "project_dir": str(project_dir),
+        "tags": tags_artifact.get("tags", {}),
         "candidates": candidates,
         "assemblies": assemblies,
     }
@@ -190,6 +192,7 @@ root.innerHTML = data.projects.map(project => {{
   return `
   <section>
     <h2>${{escapeHtml(project.filename)}} <span class="pill">${{project.candidates.length}} candidates</span> <span class="pill">${{assemblies.length}} assemblies</span></h2>
+    ${{renderTags(project.tags)}}
     ${{assemblies.length ? `<h3>Auto-generated drafts</h3>${{assemblies.map(renderAssembly).join('')}}` : ''}}
     <h3>Clip candidates</h3>
     ${{visible.map(renderClip).join('')}}
@@ -197,6 +200,29 @@ root.innerHTML = data.projects.map(project => {{
   </section>
   `;
 }}).join('');
+
+function renderTags(tags) {{
+  if (!tags || !Object.keys(tags).length) return '';
+  const pill = (label, value) => (value === null || value === undefined || value === '') ? '' : `<span class="pill">${{escapeHtml(label)}}: ${{escapeHtml(value)}}</span>`;
+  const flags = (tags.quality_flags || []).map(f => `<span class="pill decision-trim">${{escapeHtml(f)}}</span>`).join('');
+  return `
+    <h3>Content tags</h3>
+    <article class="clip">
+      <div class="row">
+        ${{pill('bucket', tags.bucket)}}
+        ${{pill('event', tags.event_type)}}
+        ${{pill('performer', tags.performer)}}
+        ${{pill('venue', tags.venue)}}
+        ${{pill('energy', tags.energy)}}
+        ${{pill('orientation', tags.orientation)}}
+        ${{pill('vocal', tags.has_vocal ? 'yes' : 'no')}}
+        ${{pill('usable_vertical', tags.usable_vertical ? 'yes' : 'no')}}
+        ${{flags}}
+      </div>
+      <details><summary>Tag record</summary><pre>${{escapeHtml(JSON.stringify(tags, null, 2))}}</pre></details>
+    </article>
+  `;
+}}
 
 function renderAssembly(a) {{
   return `

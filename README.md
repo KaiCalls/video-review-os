@@ -21,6 +21,7 @@ Video Review OS is for the first-pass review work that happens before a clip bec
 - Inspect media with `ffprobe`.
 - Transcribe with local Whisper, faster-whisper, hosted adapters, or deterministic fallback.
 - Select candidate clip ranges from transcript and timing data.
+- Tag each source with a content record (event type, performer, venue, energy, vocal presence, orientation, content bucket) so a raw library is findable and feeds a content conveyor.
 - Flag clips that fail from the audience's point of view, and emit deterministic **repair ops** (trim the weak ending, drop the awkward pause, cut the filler opening) instead of only flags.
 - **Propose a storyboard** (deterministic fallback, or your own LLM endpoint) that can combine, reorder, and bridge clips into finished assemblies.
 - **Resolve assemblies into a concrete edit decision list (EDL)** of source ranges plus title/bridge cards, applying the repair ops.
@@ -43,6 +44,7 @@ Video Review OS is for the first-pass review work that happens before a clip bec
 | `source.json` | File hash, original path, active path, media metadata, streams, codecs, and safety state. |
 | `transcript.json` | Transcript segments and word timestamps when transcription is configured. |
 | `clips.json` | Candidate clip ranges with `keep`, `trim`, `review`, or `reject` decisions. |
+| `tags.json` | Content tag record for the source: event type, performer, venue, energy, vocal presence, orientation, `usable_vertical`, and a first-class content `bucket`. |
 | `quality_gate` entries | Audience-first flags plus `repair_ops` (actionable trim/drop/lead-in instructions) for each candidate. |
 | `silence.json` | Detected audio dead-air intervals (`silencedetect`) the assembly layer drops. |
 | `storyboard.json` | Proposal for how candidates become assemblies: members, order, bridge/title cards, rationale. |
@@ -152,6 +154,23 @@ It flags:
 - Generic hooks and low-value captions.
 
 ![Video Review OS decision gate](docs/diagrams/decision-gate.svg)
+
+## Content Tags
+
+The quality gate decides whether a range is usable. The tagger answers a different question: *what is this source, and where does it belong?* `tag` reads `source.json` and `transcript.json` and writes one `tags.json` record per source video:
+
+| Tag | Derived from | Example |
+| --- | --- | --- |
+| `event_type` | filename + transcript keywords | `wedding`, `gala`, `corporate` |
+| `performer` / `vocal_performer` | whole-word match against `roster` | `Olivia` |
+| `venue` | whole-word match against `venues` | configured name |
+| `energy` | transcript keywords | `low`, `build`, `peak` |
+| `has_vocal` | audio stream present + transcript text | `true` / `false` |
+| `orientation` / `usable_vertical` | stream geometry | `horizontal` → not usable vertical |
+| `quality_flags` | media facts | `horizontal_needs_reframe`, `no_audio_stream` |
+| `bucket` | the above, mapped to a content lane | `real_gfa`, `direct_camera`, `broll_trending` |
+
+The auto-tags are a deterministic first pass meant to be inspected and refined — same contract as the storyboard and copy layers. The `fallback` provider is heuristic and always available; point `provider = "generic-http"` at your own endpoint to refine them, and the response is sanitized so a provider can only return known buckets and orientations. Every source leaves the tagger with exactly one `bucket` (`default_bucket` when no signal is found), so a downstream conveyor can plan against the content mix.
 
 ## Clip Decisions
 
@@ -356,6 +375,7 @@ video-review-os --config config.toml ingest raw/video.mp4
 video-review-os --config config.toml transcribe projects/sample-video-abc123
 video-review-os --config config.toml select-clips projects/sample-video-abc123
 video-review-os --config config.toml draft-copy projects/sample-video-abc123
+video-review-os --config config.toml tag projects/sample-video-abc123
 video-review-os --config config.toml captions projects/sample-video-abc123
 video-review-os --config config.toml scenes projects/sample-video-abc123
 video-review-os --config config.toml visuals projects/sample-video-abc123
@@ -416,6 +436,15 @@ opening_word_window = 8
 provider = "fallback" # fallback, generic-http
 hosted_endpoint_env = "VIDEO_REVIEW_COPY_ENDPOINT"
 hosted_api_key_env = "VIDEO_REVIEW_COPY_API_KEY"
+
+[tagging]
+provider = "fallback" # fallback, generic-http
+hosted_endpoint_env = "VIDEO_REVIEW_TAG_ENDPOINT"
+hosted_api_key_env = "VIDEO_REVIEW_TAG_API_KEY"
+roster = []   # performer names matched (whole-word) in filename + transcript
+venues = []   # venue names matched the same way
+buckets = ["broll_trending", "real_gfa", "direct_camera", "broll_own_audio", "broll_no_text_trending"]
+default_bucket = "broll_trending"
 
 [captions]
 max_chars = 42
@@ -496,6 +525,7 @@ src/video_review_os/
   transcribe.py
   quality_gate.py
   clip_select.py
+  tagging.py
   captions.py
   scenes.py
   visuals.py
